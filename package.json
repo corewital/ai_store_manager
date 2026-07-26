@@ -17,6 +17,7 @@
     "db:generate": "drizzle-kit generate",
     "db:seed": "tsx app/db/seeders/index.ts",
     "db:fresh": "drizzle-kit push --force && npm run db:seed",
+    "db:repair": "tsx scripts/repair-local-db.ts",
     "db:migrate-mysql": "tsx scripts/migrate-mysql-to-turso.ts"
   },
   "engines": {

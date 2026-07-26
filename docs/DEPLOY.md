@@ -32,6 +32,21 @@ npm run db:seed                # roles, plans, super admin
 npm run db:migrate-mysql       # copy local MySQL → Turso (optional)
 ```
 
+### Local vs production DB — read this
+`drizzle-kit push` targets whatever `TURSO_DATABASE_URL` is set to. If the cloud
+URL is exported in your shell, a later "local" push silently hits **production**
+and your local DB drifts.
+
+- Local dev: `.env` → `TURSO_DATABASE_URL=file:./data/local.db`
+- Production push: pass the cloud URL **inline for that one command only**
+
+If the app throws `Failed query: select … from "shops"` naming a column that
+exists in `app/db/schema.ts`, the local DB drifted. Repair it:
+```bash
+npm run db:repair             # adds missing columns to data/local.db
+npx drizzle-kit push --force  # then confirm "No changes detected"
+```
+
 ## 4. Shopify app URL
 After first Vercel deploy succeeds, set Partner Dashboard / `shopify.app.toml` `application_url` to the Vercel URL, then:
 ```bash
