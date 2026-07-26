@@ -38,9 +38,16 @@ After first Vercel deploy succeeds, set Partner Dashboard / `shopify.app.toml` `
 npm run deploy
 ```
 
-## 5. Local development
-Same Turso dialect everywhere:
-- **Cloud Turso** (shared with prod): set `TURSO_*` in `.env`
-- **Offline file DB**: `TURSO_DATABASE_URL=file:./data/local.db` (no token)
+## Hobby: “Deployment Blocked” (commit author)
 
-Legacy MySQL is only used by `npm run db:migrate-mysql`.
+If Vercel says the commit author lacks contributing access:
+
+**Cause:** Hobby does **not** allow collaborators on **private** repos. Commits from `hp-development` cannot deploy into a **CoreWital** team project.
+
+**Pick one fix (no code change):**
+
+1. **Easiest (free):** GitHub → repo **Settings → Change visibility → Public**, then Redeploy on Vercel.  
+2. **Keep private:** Vercel → upgrade team to **Pro**, add `hp-development` as a member.  
+3. **Same account:** Create/import the project under the **personal** Vercel account that owns the GitHub login used for commits (not a separate team), then reconnect the repo.
+
+Then: **Deployments → … on latest → Redeploy**.
