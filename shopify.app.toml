@@ -2,7 +2,7 @@
 
 name = "CorePilot AI"
 client_id = "a4ba88c8d3f3c2c642fb0791258c1142"
-application_url = "https://trans-developer-introductory-replied.trycloudflare.com"
+application_url = "https://corepilotai.corewital.com"
 embedded = true
 
 [build]
@@ -13,13 +13,13 @@ scopes = "read_products,write_products,read_inventory,write_inventory,read_order
 
 [auth]
 redirect_urls = [
-  "https://trans-developer-introductory-replied.trycloudflare.com/auth/callback",
-  "https://trans-developer-introductory-replied.trycloudflare.com/auth/shopify/callback",
-  "https://trans-developer-introductory-replied.trycloudflare.com/api/auth/callback"
+  "https://corepilotai.corewital.com/auth/callback",
+  "https://corepilotai.corewital.com/auth/shopify/callback",
+  "https://corepilotai.corewital.com/api/auth/callback"
 ]
 
 [app_preferences]
-url = "https://trans-developer-introductory-replied.trycloudflare.com/app/settings/general"
+url = "https://corepilotai.corewital.com/app/settings/general"
 
 [webhooks]
 api_version = "2025-01"
