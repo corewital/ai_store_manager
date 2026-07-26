@@ -23,12 +23,27 @@ import {
 } from "../services/shopify/billing.server";
 import { ensureShop } from "../services/shopify/shops.server";
 import { SETTINGS_NAV, SubNav } from "../components/SubNav";
+import {
+  getPlanUsage,
+  getPlanLimit,
+} from "../services/shopify/plan-gate.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop, session.accessToken);
   const plan = await syncSubscription(admin, shop.id);
-  return { plan, shopDomain: session.shop };
+  const usage = await getPlanUsage(shop.id);
+  const [productLimit, aiLimit, scanLimit] = await Promise.all([
+    getPlanLimit(plan, "products_limit"),
+    getPlanLimit(plan, "ai_fixes_limit"),
+    getPlanLimit(plan, "manual_scans_limit"),
+  ]);
+  return {
+    plan,
+    shopDomain: session.shop,
+    usage,
+    limits: { productLimit, aiLimit, scanLimit },
+  };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -37,6 +52,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const plan = String((await request.formData()).get("plan") ?? "");
   if (!(plan in PLANS)) return { ok: false, error: "invalid_plan" };
+  if (plan === "enterprise") {
+    return { ok: false, error: "Contact support for Enterprise." };
+  }
 
   const appUrl = process.env.SHOPIFY_APP_URL || new URL(request.url).origin;
   const result = await createSubscription(
@@ -52,17 +70,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function SettingsBillingPage() {
-  const { plan: currentPlan, shopDomain } = useLoaderData<typeof loader>();
+  const { plan: currentPlan, shopDomain, usage, limits } =
+    useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const [params] = useSearchParams();
   const confirmed = params.get("confirmed");
-  const activePlan = currentPlan as PlanSlug;
+  const need = params.get("need");
+  const activePlan = (currentPlan in PLANS ? currentPlan : "free") as PlanSlug;
 
   return (
     <Page>
       <TitleBar title="Plans & Billing" />
       <SubNav items={SETTINGS_NAV} />
       <BlockStack gap="500">
+        {need && (
+          <Banner tone="warning">
+            “{need}” needs a higher plan. Upgrade below to unlock it.
+          </Banner>
+        )}
         {confirmed && (
           <Banner tone="success">
             Subscription confirmed. You are on the {PLANS[activePlan].name} plan.
@@ -70,34 +95,38 @@ export default function SettingsBillingPage() {
         )}
         {fetcher.data && !fetcher.data.ok && (
           <Banner tone="critical">
-            Could not start checkout:{" "}
             {(fetcher.data as { error?: string }).error}
           </Banner>
         )}
-        {fetcher.data?.ok && (
-          <Banner tone="success">Downgraded to the Free plan.</Banner>
-        )}
 
         <Card>
-          <InlineStack align="space-between" blockAlign="center">
-            <BlockStack gap="100">
+          <BlockStack gap="200">
+            <InlineStack align="space-between" blockAlign="center">
               <Text as="h2" variant="headingMd">
                 Current plan
               </Text>
-              <Text as="p" tone="subdued">
-                Billed through Shopify for {shopDomain}. 7-day free trial on all
-                paid plans.
-              </Text>
-            </BlockStack>
-            <Badge tone="success">{PLANS[activePlan].name}</Badge>
-          </InlineStack>
+              <Badge tone="success">{PLANS[activePlan].name}</Badge>
+            </InlineStack>
+            <Text as="p" tone="subdued">
+              Billed through Shopify for {shopDomain}.
+            </Text>
+            <Text as="p" variant="bodySm">
+              Usage — AI fixes: {usage.aiFixesUsed}
+              {limits.aiLimit != null ? ` / ${limits.aiLimit}` : ""} · Manual
+              scans: {usage.manualScansUsed}
+              {limits.scanLimit != null ? ` / ${limits.scanLimit}` : ""} ·
+              Product cap: {limits.productLimit ?? "Unlimited"}
+            </Text>
+          </BlockStack>
         </Card>
 
         <Layout>
           {(Object.keys(PLANS) as PlanSlug[]).map((slug) => {
             const p = PLANS[slug];
             const isCurrent = slug === activePlan;
-            const isUpgrade = p.priceCents > PLANS[activePlan].priceCents;
+            const isEnterprise = p.priceCents < 0;
+            const curPrice = Math.max(PLANS[activePlan].priceCents, 0);
+            const isUpgrade = !isEnterprise && p.priceCents > curPrice;
             return (
               <Layout.Section key={slug} variant="oneHalf">
                 <Card>
@@ -113,8 +142,8 @@ export default function SettingsBillingPage() {
                     </Text>
                     <Text as="p" tone="subdued">
                       {p.productLimit
-                        ? `Up to ${p.productLimit} products`
-                        : "Unlimited products"}
+                        ? `Up to ${p.productLimit} products · ${p.collectionLimit} collections`
+                        : "Unlimited products & collections"}
                     </Text>
                     <Divider />
                     <List type="bullet">
@@ -125,6 +154,10 @@ export default function SettingsBillingPage() {
                     {isCurrent ? (
                       <Button disabled fullWidth>
                         Current plan
+                      </Button>
+                    ) : isEnterprise ? (
+                      <Button url="/app/support" fullWidth>
+                        Contact support
                       </Button>
                     ) : (
                       <fetcher.Form method="post">

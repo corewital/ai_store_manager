@@ -41,6 +41,11 @@ import {
   enqueueShopScan,
   getShopJobState,
 } from "../services/shopify/shop-jobs.server";
+import {
+  assertCanScan,
+  recordManualScan,
+  PlanGateError,
+} from "../services/shopify/plan-gate.server";
 import { getModuleVisibility } from "../services/admin/module-visibility.server";
 import { getEffectiveScanModules } from "../services/shopify/effective-modules.server";
 import type { AppModuleVisibility } from "../services/admin/module-visibility";
@@ -90,7 +95,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     getModuleVisibility(),
     getEffectiveScanModules(shop.id),
     getCatalogCounts(admin),
-    listShopActivity(shop.id, session.shop, 12),
+    listShopActivity(shop.id, session.shop, 5),
   ]);
 
   const issueCounts = {
@@ -141,9 +146,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop, session.accessToken);
-  const result = await enqueueShopScan(shop.id);
-  if (!result.ok) return { ok: false, error: result.error };
-  return { ok: true, queued: true };
+  const plan = await getShopPlan(shop.id);
+  try {
+    await assertCanScan(shop.id, plan);
+    const result = await enqueueShopScan(shop.id);
+    if (!result.ok) return { ok: false, error: result.error };
+    await recordManualScan(shop.id);
+    return {
+      ok: true,
+      queued: true,
+      processed: result.processed,
+      message: result.message,
+    };
+  } catch (error) {
+    if (error instanceof PlanGateError) {
+      return { ok: false, error: error.message, upgrade: true };
+    }
+    throw error;
+  }
 };
 
 function statusFor(score: number, open: number) {
@@ -201,17 +221,29 @@ export default function Index() {
       <TitleBar title="Dashboard" />
       <BlockStack gap="500">
         {scan.data?.ok && "queued" in scan.data && scan.data.queued && (
-          <Banner tone="info">
-            Scan queued. Cron will process it — this page will show status when done.
+          <Banner tone="success">
+            {(scan.data as { message?: string }).message === "scan_done"
+              ? "Scan completed. Refresh to see updated issue counts."
+              : "Scan finished processing. Refresh if counts look stale."}
           </Banner>
         )}
         {scan.data && !scan.data.ok && "error" in scan.data && scan.data.error && (
-          <Banner tone="warning">{String(scan.data.error)}</Banner>
+          <Banner tone="warning">
+            {String(scan.data.error)}
+            {"upgrade" in scan.data && scan.data.upgrade ? (
+              <>
+                {" "}
+                <Button url="/app/settings/billing" variant="plain">
+                  Upgrade plan
+                </Button>
+              </>
+            ) : null}
+          </Banner>
         )}
         {job.busy && (
           <Banner tone="warning">
-            Background job running: {job.type || "job"} — {job.message || job.status}.
-            Scan / fix buttons are locked until it finishes.
+            Working: {job.type || "job"} — {job.message || job.status}. Buttons
+            stay locked until this finishes.
           </Banner>
         )}
         {!job.busy && job.status === "completed" && job.message && (

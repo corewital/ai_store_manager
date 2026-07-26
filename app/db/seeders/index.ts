@@ -74,45 +74,117 @@ const PLAN_DEFS = [
     trialDays: 0,
     shopifyPlanHandle: "free",
     features: [
-      { featureKey: "daily_scans", limitValue: 1, enabled: true },
-      { featureKey: "products_per_scan", limitValue: 100, enabled: true },
-      { featureKey: "ai_generations", limitValue: 5, enabled: true },
+      { featureKey: "products_limit", limitValue: 50, enabled: true },
+      { featureKey: "collections_limit", limitValue: 10, enabled: true },
+      { featureKey: "ai_fixes_limit", limitValue: 50, enabled: true },
+      { featureKey: "manual_scans_limit", limitValue: 3, enabled: true },
+      { featureKey: "scan_cadence", limitValue: 0, enabled: true },
+      { featureKey: "module_products", limitValue: null, enabled: true },
+      { featureKey: "module_seo", limitValue: null, enabled: true },
+      { featureKey: "module_images", limitValue: null, enabled: true },
+      { featureKey: "module_collections", limitValue: null, enabled: true },
+      { featureKey: "module_inventory", limitValue: null, enabled: false },
+      { featureKey: "module_performance", limitValue: null, enabled: false },
+      { featureKey: "module_assistant", limitValue: null, enabled: false },
+      { featureKey: "module_reports", limitValue: null, enabled: true },
+      { featureKey: "email_reports", limitValue: null, enabled: false },
+      { featureKey: "scheduled_reports", limitValue: null, enabled: false },
     ],
   },
   {
     slug: "starter",
     name: "Starter",
-    priceCents: 999,
+    priceCents: 499,
     trialDays: 7,
     shopifyPlanHandle: "starter",
     features: [
-      { featureKey: "daily_scans", limitValue: 1, enabled: true },
-      { featureKey: "products_per_scan", limitValue: 500, enabled: true },
-      { featureKey: "ai_generations", limitValue: 25, enabled: true },
+      { featureKey: "products_limit", limitValue: 300, enabled: true },
+      { featureKey: "collections_limit", limitValue: 50, enabled: true },
+      { featureKey: "ai_fixes_limit", limitValue: 200, enabled: true },
+      { featureKey: "manual_scans_limit", limitValue: null as number | null, enabled: true },
+      { featureKey: "scan_cadence", limitValue: 1, enabled: true },
+      { featureKey: "module_products", limitValue: null, enabled: true },
+      { featureKey: "module_seo", limitValue: null, enabled: true },
+      { featureKey: "module_images", limitValue: null, enabled: true },
+      { featureKey: "module_collections", limitValue: null, enabled: true },
+      { featureKey: "module_inventory", limitValue: null, enabled: false },
+      { featureKey: "module_performance", limitValue: null, enabled: false },
+      { featureKey: "module_assistant", limitValue: null, enabled: false },
+      { featureKey: "module_reports", limitValue: null, enabled: true },
+      { featureKey: "email_reports", limitValue: null, enabled: false },
+      { featureKey: "scheduled_reports", limitValue: null, enabled: false },
     ],
   },
   {
     slug: "professional",
     name: "Professional",
-    priceCents: 2999,
+    priceCents: 999,
     trialDays: 7,
     shopifyPlanHandle: "professional",
     features: [
-      { featureKey: "daily_scans", limitValue: 2, enabled: true },
-      { featureKey: "products_per_scan", limitValue: 2000, enabled: true },
-      { featureKey: "ai_generations", limitValue: 100, enabled: true },
+      { featureKey: "products_limit", limitValue: 1000, enabled: true },
+      { featureKey: "collections_limit", limitValue: 500, enabled: true },
+      { featureKey: "ai_fixes_limit", limitValue: 500, enabled: true },
+      { featureKey: "manual_scans_limit", limitValue: null as number | null, enabled: true },
+      { featureKey: "scan_cadence", limitValue: 2, enabled: true },
+      { featureKey: "module_products", limitValue: null, enabled: true },
+      { featureKey: "module_seo", limitValue: null, enabled: true },
+      { featureKey: "module_images", limitValue: null, enabled: true },
+      { featureKey: "module_collections", limitValue: null, enabled: true },
+      { featureKey: "module_inventory", limitValue: null, enabled: true },
+      { featureKey: "module_performance", limitValue: null, enabled: true },
+      { featureKey: "module_assistant", limitValue: null, enabled: false },
+      { featureKey: "module_reports", limitValue: null, enabled: true },
+      { featureKey: "email_reports", limitValue: null, enabled: true },
+      { featureKey: "scheduled_reports", limitValue: null, enabled: false },
     ],
   },
   {
     slug: "business",
     name: "Business",
-    priceCents: 9900,
+    priceCents: 1999,
     trialDays: 14,
     shopifyPlanHandle: "business",
     features: [
-      { featureKey: "daily_scans", limitValue: 4, enabled: true },
-      { featureKey: "products_per_scan", limitValue: null as number | null, enabled: true },
-      { featureKey: "ai_generations", limitValue: 500, enabled: true },
+      { featureKey: "products_limit", limitValue: 5000, enabled: true },
+      { featureKey: "collections_limit", limitValue: 1000, enabled: true },
+      { featureKey: "ai_fixes_limit", limitValue: 5000, enabled: true },
+      { featureKey: "manual_scans_limit", limitValue: null as number | null, enabled: true },
+      { featureKey: "scan_cadence", limitValue: 3, enabled: true },
+      { featureKey: "module_products", limitValue: null, enabled: true },
+      { featureKey: "module_seo", limitValue: null, enabled: true },
+      { featureKey: "module_images", limitValue: null, enabled: true },
+      { featureKey: "module_collections", limitValue: null, enabled: true },
+      { featureKey: "module_inventory", limitValue: null, enabled: true },
+      { featureKey: "module_performance", limitValue: null, enabled: true },
+      { featureKey: "module_assistant", limitValue: null, enabled: true },
+      { featureKey: "module_reports", limitValue: null, enabled: true },
+      { featureKey: "email_reports", limitValue: null, enabled: true },
+      { featureKey: "scheduled_reports", limitValue: null, enabled: true },
+    ],
+  },
+  {
+    slug: "enterprise",
+    name: "Enterprise",
+    priceCents: -1,
+    trialDays: 0,
+    shopifyPlanHandle: "enterprise",
+    features: [
+      { featureKey: "products_limit", limitValue: null as number | null, enabled: true },
+      { featureKey: "collections_limit", limitValue: null as number | null, enabled: true },
+      { featureKey: "ai_fixes_limit", limitValue: null as number | null, enabled: true },
+      { featureKey: "manual_scans_limit", limitValue: null as number | null, enabled: true },
+      { featureKey: "scan_cadence", limitValue: 3, enabled: true },
+      { featureKey: "module_products", limitValue: null, enabled: true },
+      { featureKey: "module_seo", limitValue: null, enabled: true },
+      { featureKey: "module_images", limitValue: null, enabled: true },
+      { featureKey: "module_collections", limitValue: null, enabled: true },
+      { featureKey: "module_inventory", limitValue: null, enabled: true },
+      { featureKey: "module_performance", limitValue: null, enabled: true },
+      { featureKey: "module_assistant", limitValue: null, enabled: true },
+      { featureKey: "module_reports", limitValue: null, enabled: true },
+      { featureKey: "email_reports", limitValue: null, enabled: true },
+      { featureKey: "scheduled_reports", limitValue: null, enabled: true },
     ],
   },
 ];
@@ -212,6 +284,16 @@ async function seedBillingPlans() {
     });
     if (existing) {
       planId = existing.id;
+      await db
+        .update(billingPlans)
+        .set({
+          name: plan.name,
+          priceCents: plan.priceCents,
+          trialDays: plan.trialDays,
+          shopifyPlanHandle: plan.shopifyPlanHandle,
+          updatedAt: new Date(),
+        })
+        .where(eq(billingPlans.id, planId));
     } else {
       planId = await insertReturningId(billingPlans, {
         slug: plan.slug,
@@ -222,17 +304,30 @@ async function seedBillingPlans() {
       });
     }
 
-    const feats = await db.query.planFeatures.findMany({
-      where: eq(planFeatures.planId, planId),
-    });
     for (const f of plan.features) {
-      if (feats.some((x) => x.featureKey === f.featureKey)) continue;
-      await db.insert(planFeatures).values({
-        planId,
-        featureKey: f.featureKey,
-        limitValue: f.limitValue,
-        enabled: f.enabled,
+      const row = await db.query.planFeatures.findFirst({
+        where: and(
+          eq(planFeatures.planId, planId),
+          eq(planFeatures.featureKey, f.featureKey),
+        ),
       });
+      if (row) {
+        await db
+          .update(planFeatures)
+          .set({
+            limitValue: f.limitValue,
+            enabled: f.enabled,
+            updatedAt: new Date(),
+          })
+          .where(eq(planFeatures.id, row.id));
+      } else {
+        await db.insert(planFeatures).values({
+          planId,
+          featureKey: f.featureKey,
+          limitValue: f.limitValue,
+          enabled: f.enabled,
+        });
+      }
     }
   }
 }

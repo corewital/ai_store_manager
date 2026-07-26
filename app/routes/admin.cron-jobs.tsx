@@ -259,9 +259,11 @@ export default function AdminCronJobsPage() {
         <div>
           <h1>Cron jobs</h1>
           <p className="admin-page__lead" style={{ marginBottom: 0 }}>
-            Hobby Vercel: daily-scan 03:00 UTC · process-jobs 03:15 UTC ·
-            weekly-report Sun 04:00 UTC. Use Run buttons below for an immediate
-            tick. Upgrade to Pro for minute-level crons.
+            Hobby Vercel runs crons once/day (scan 03:00 · process-jobs 03:15 ·
+            weekly Sun 04:00 UTC). Merchant scans now process immediately when
+            queued. Status: <strong>ok</strong> = all shops succeeded,{" "}
+            <strong>partial</strong> = some failed, <strong>failed</strong> =
+            all failed. Use Run for an immediate tick.
           </p>
         </div>
         <div className="admin-actions">

@@ -43,7 +43,10 @@ async function setJob(
     .where(eq(appSettings.shopId, shopId));
 }
 
-/** Queue a background full scan — processed by cron, not realtime. */
+/**
+ * Queue a full scan. On Hobby Vercel cron is only daily, so we process
+ * this shop immediately in the same request (still async from the UI).
+ */
 export async function enqueueShopScan(shopId: number) {
   const state = await getShopJobState(shopId);
   if (state.busy) {
@@ -52,14 +55,20 @@ export async function enqueueShopScan(shopId: number) {
   await setJob(shopId, {
     jobStatus: "queued",
     jobType: "scan",
-    jobMessage: "Scan queued — cron will process shortly.",
+    jobMessage: "Scan starting…",
     jobStartedAt: new Date(),
     jobFinishedAt: null,
   });
-  return { ok: true as const };
+
+  const result = await processOneShop(shopId, "scan");
+  return {
+    ok: true as const,
+    processed: result.ok,
+    message: result.message,
+  };
 }
 
-/** Queue bulk fixes only (no Shopify calls here). Per-shop job row in app_settings. */
+/** Queue bulk fixes, then process this shop immediately. */
 export async function enqueueShopFixes(
   shopId: number,
   module: string,
@@ -80,12 +89,11 @@ export async function enqueueShopFixes(
     });
   }
 
-  // Append-friendly: keep running/queued if already working this shop
   if (!state.busy) {
     await setJob(shopId, {
       jobStatus: "queued",
       jobType: "fix",
-      jobMessage: `Bulk fix: ${ids.length} item(s) waiting for cron.`,
+      jobMessage: `Bulk fix: ${ids.length} item(s) starting…`,
       jobStartedAt: new Date(),
       jobFinishedAt: null,
     });
@@ -95,12 +103,14 @@ export async function enqueueShopFixes(
     });
   }
 
-  return { ok: true as const, queued: ids.length };
+  const result = await processOneShop(shopId, "fix");
+  return { ok: true as const, queued: ids.length, processed: result.ok };
 }
 
 async function processOneShop(
   shopId: number,
   jobType: string | null | undefined,
+  batch = 0,
 ): Promise<{ shopId: number; ok: boolean; message: string }> {
   const shop = await db.query.shops.findFirst({
     where: and(
@@ -130,6 +140,7 @@ async function processOneShop(
       await runFullScan(shop.id, admin, { maxPages: 4 });
       await setJob(shop.id, {
         jobStatus: "completed",
+        jobType: "scan",
         jobMessage: "Scan completed successfully.",
         jobFinishedAt: new Date(),
       });
@@ -176,10 +187,16 @@ async function processOneShop(
       jobStatus: stillPending ? "queued" : "completed",
       jobType: "fix",
       jobMessage: stillPending
-        ? `Processed batch (${ok} ok / ${fail} failed). More pending — next cron.`
+        ? `Processed batch (${ok} ok / ${fail} failed). More pending.`
         : `Fixes completed (${ok} ok / ${fail} failed).`,
       jobFinishedAt: stillPending ? null : new Date(),
     });
+
+    // Drain more batches in-request (Hobby cron is daily-only)
+    if (stillPending && batch < 4) {
+      return processOneShop(shopId, "fix", batch + 1);
+    }
+
     return {
       shopId: shop.id,
       ok: fail === 0,
@@ -189,7 +206,7 @@ async function processOneShop(
     const msg = error instanceof Error ? error.message : String(error);
     await setJob(shop.id, {
       jobStatus: "failed",
-      jobMessage: msg,
+      jobMessage: msg.slice(0, 500),
       jobFinishedAt: new Date(),
     });
     return { shopId: shop.id, ok: false, message: msg };
@@ -197,13 +214,13 @@ async function processOneShop(
 }
 
 /**
- * Cron worker: processes queued jobs for many installed stores independently
- * (each shop has its own app_settings job row + fix_queue rows).
+ * Cron worker: processes queued jobs for many stores.
+ * Status in cron_run_logs: ok | partial | failed
  */
 export async function processQueuedShopJobs(limitShops = 25) {
   const staleBefore = new Date(Date.now() - STALE_MS);
+  const startedAt = new Date();
 
-  // Reclaim shops stuck in "running" too long
   await db
     .update(appSettings)
     .set({
@@ -221,7 +238,6 @@ export async function processQueuedShopJobs(limitShops = 25) {
       ),
     );
 
-  // Promote any store with pending fix_queue rows
   const pendingRows = await db.query.fixQueue.findMany({
     where: and(eq(fixQueue.status, "pending"), isNull(fixQueue.deletedAt)),
     limit: 200,
@@ -232,7 +248,7 @@ export async function processQueuedShopJobs(limitShops = 25) {
       await setJob(shopId, {
         jobStatus: "queued",
         jobType: "fix",
-        jobMessage: "Pending fixes detected — queued for cron.",
+        jobMessage: "Pending fixes detected — queued.",
         jobStartedAt: new Date(),
         jobFinishedAt: null,
       });
@@ -249,15 +265,24 @@ export async function processQueuedShopJobs(limitShops = 25) {
     results.push(await processOneShop(settings.shopId, settings.jobType));
   }
 
+  const failed = results.filter((r) => !r.ok);
+  const status =
+    results.length === 0
+      ? "ok"
+      : failed.length === 0
+        ? "ok"
+        : failed.length === results.length
+          ? "failed"
+          : "partial";
+
   await db.insert(cronRunLogs).values({
     jobName: "process-jobs",
-    startedAt: new Date(),
+    startedAt,
     finishedAt: new Date(),
-    status: results.some((r) => !r.ok) ? "partial" : "ok",
+    status,
     shopsProcessed: results.length,
-    errorMessage: results.some((r) => !r.ok)
-      ? results
-          .filter((r) => !r.ok)
+    errorMessage: failed.length
+      ? failed
           .map((r) => `shop ${r.shopId}: ${r.message}`)
           .join("; ")
           .slice(0, 500)
@@ -265,4 +290,14 @@ export async function processQueuedShopJobs(limitShops = 25) {
   });
 
   return results;
+}
+
+/** Reset a stuck shop job back to idle (admin). */
+export async function resetShopJob(shopId: number) {
+  await setJob(shopId, {
+    jobStatus: "idle",
+    jobType: null,
+    jobMessage: "Reset by admin",
+    jobFinishedAt: new Date(),
+  });
 }

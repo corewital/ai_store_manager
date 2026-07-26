@@ -364,7 +364,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     } else if (intent === "run_scan") {
       const result = await enqueueShopScan(shopId);
       flash = result.ok
-        ? "Scan queued — cron will run it (buttons locked while busy)."
+        ? "Scan started and processed for this store."
         : result.error;
       await db.insert(activityLogs).values({
         actorAdminUserId: user.id,

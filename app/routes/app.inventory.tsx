@@ -7,9 +7,9 @@ import { getOrCreateSettings } from "../services/shopify/app-settings.server";
 import { requireAppModule } from "../services/shopify/require-module.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const modules = await requireAppModule("inventory");
   const { session } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop, session.accessToken);
+  const modules = await requireAppModule("inventory", shop.id);
   const settings = await getOrCreateSettings(shop.id);
   return {
     shopDomain: session.shop,

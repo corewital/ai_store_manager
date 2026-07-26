@@ -18,10 +18,12 @@ import { assistantConversations } from "../db/schema";
 import { askAssistant } from "../services/ai/assistant.server";
 import { getShopAiConfig } from "../services/ai/ai-config.server";
 import { ensureShop } from "../services/shopify/shops.server";
+import { requireAppModule } from "../services/shopify/require-module.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop, session.accessToken);
+  await requireAppModule("assistant", shop.id);
   const ai = await getShopAiConfig(shop.id);
   const convo = await db.query.assistantConversations.findFirst({
     where: eq(assistantConversations.shopId, shop.id),

@@ -29,9 +29,9 @@ import { healthNavFor, SubNav } from "../components/SubNav";
 import { requireAppModule } from "../services/shopify/require-module.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const modules = await requireAppModule("performance");
   const { session } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop, session.accessToken);
+  const modules = await requireAppModule("performance", shop.id);
 
   let metrics: PerformanceMetrics | null = null;
   let suggestions: string[] = [];

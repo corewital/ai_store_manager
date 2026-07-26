@@ -78,6 +78,13 @@ export async function createSubscription(
     return { ok: true, confirmationUrl: null, plan };
   }
 
+  if (definition.priceCents < 0) {
+    return {
+      ok: false,
+      error: "Enterprise plans require contacting support.",
+    };
+  }
+
   const returnUrl = `${appUrl}/app/settings/billing?confirmed=${plan}`;
 
   try {

@@ -114,6 +114,8 @@ export const appSettings = sqliteTable("app_settings", {
   jobMessage: text("job_message"),
   jobStartedAt: integer("job_started_at", { mode: "timestamp_ms" }),
   jobFinishedAt: integer("job_finished_at", { mode: "timestamp_ms" }),
+  /** Free-plan manual scan counter (admin-editable limit via plan_features). */
+  manualScanCount: integer("manual_scan_count").notNull().default(0),
   ...timestamps,
 });
 
