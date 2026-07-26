@@ -1,0 +1,11 @@
+---
+description: When editing CURRENT or PROGRESS, keep them tiny
+globs: "{CURRENT.md,PROGRESS.md,START.md}"
+alwaysApply: false
+---
+
+# State files
+
+- `CURRENT.md` must describe exactly one task: ID, Spec Sec, files, done-when.
+- After completing a task, check the matching `PROGRESS.md` line and replace `CURRENT.md` with the next unchecked item.
+- Never expand CURRENT with full module specs — link `Spec: Sec N` only.

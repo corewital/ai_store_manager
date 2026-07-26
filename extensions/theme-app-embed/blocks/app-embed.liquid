@@ -1,0 +1,18 @@
+{% if block.settings.enabled %}
+  <div id="ai-store-manager-embed" data-shop="{{ shop.permanent_domain }}"></div>
+{% endif %}
+
+{% schema %}
+{
+  "name": "AI Store Manager",
+  "target": "body",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "enabled",
+      "label": "Enable app embed",
+      "default": true
+    }
+  ]
+}
+{% endschema %}

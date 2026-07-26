@@ -1,0 +1,76 @@
+{
+  "name": "ai-store-manager",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "remix vite:build",
+    "dev": "shopify app dev",
+    "start": "remix-serve ./build/server/index.js",
+    "config:link": "shopify app config link",
+    "config:use": "shopify app config use",
+    "deploy": "shopify app deploy",
+    "env": "shopify app env",
+    "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
+    "shopify": "shopify",
+    "vite": "vite",
+    "db:migrate": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "db:seed": "tsx app/db/seeders/index.ts",
+    "db:fresh": "drizzle-kit push --force && npm run db:seed"
+  },
+  "engines": {
+    "node": ">=20.19 <22 || >=22.12"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^7.3.1",
+    "@fortawesome/free-solid-svg-icons": "^7.3.1",
+    "@fortawesome/react-fontawesome": "^3.5.0",
+    "@google/generative-ai": "^0.24.1",
+    "@libsql/client": "^0.17.4",
+    "@remix-run/dev": "^2.16.1",
+    "@remix-run/fs-routes": "^2.16.1",
+    "@remix-run/node": "^2.16.1",
+    "@remix-run/react": "^2.16.1",
+    "@remix-run/serve": "^2.16.1",
+    "@shopify/app-bridge-react": "^4.1.6",
+    "@shopify/polaris": "^12.0.0",
+    "@shopify/shopify-app-remix": "^4.1.0",
+    "@shopify/shopify-app-session-storage-memory": "^4.0.0",
+    "bcryptjs": "^3.0.3",
+    "cookie": "^2.0.1",
+    "drizzle-orm": "^0.45.2",
+    "isbot": "^5.1.0",
+    "mysql2": "^3.23.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "resend": "^6.18.0",
+    "sharp": "^0.35.3",
+    "sweetalert2": "^11.26.25",
+    "vite-tsconfig-paths": "^5.0.1"
+  },
+  "devDependencies": {
+    "@remix-run/eslint-config": "^2.16.1",
+    "@remix-run/route-config": "^2.16.1",
+    "@shopify/app": "^3.58.2",
+    "@shopify/cli": "^4.5.2",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/eslint": "^9.6.1",
+    "@types/node": "^22.2.0",
+    "@types/react": "^18.2.31",
+    "@types/react-dom": "^18.2.14",
+    "@types/sharp": "^0.31.1",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^8.42.0",
+    "eslint-config-prettier": "^10.0.1",
+    "prettier": "^3.2.4",
+    "tsx": "^4.23.1",
+    "typescript": "^5.2.2",
+    "vite": "^6.2.2"
+  },
+  "workspaces": {
+    "packages": [
+      "extensions/*"
+    ]
+  }
+}

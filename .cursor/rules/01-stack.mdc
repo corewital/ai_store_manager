@@ -1,0 +1,20 @@
+---
+description: Stack and hard constraints for AI Store Manager
+alwaysApply: true
+---
+
+# Stack
+
+- Remix + `@shopify/shopify-app-remix` + Polaris + App Bridge
+- Drizzle + Turso (libSQL); Postgres/MySQL later via Drizzle only
+- Vercel + Vercel Cron (no long workers)
+- Gemini (`gemini-2.0-flash`) for text; `sharp` for images
+- Email: Resend
+- Admin Core = separate cookie session (not Shopify session)
+
+# Paths
+
+- Merchant: `app/routes/app.*`
+- Admin: `app/routes/admin.*` + `AdminLayout` only
+- Services: `app/services/**/*.server.ts`
+- Schema: `app/db/schema.ts`

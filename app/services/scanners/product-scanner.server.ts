@@ -1,0 +1,134 @@
+import { and, eq, isNull } from "drizzle-orm";
+import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
+import { db } from "../../db/client";
+import { productIssues } from "../../db/schema";
+
+type Admin = AdminApiContext;
+
+type ProductNode = {
+  id: string;
+  title: string;
+  descriptionHtml?: string | null;
+  status?: string;
+  variants?: { nodes: { id: string; sku?: string | null; price?: string }[] };
+  media?: { nodes: { id: string }[] };
+};
+
+async function upsertIssue(
+  shopId: number,
+  resourceId: string,
+  issueCode: string,
+  title: string,
+  details?: Record<string, unknown>,
+) {
+  const existing = await db.query.productIssues.findFirst({
+    where: and(
+      eq(productIssues.shopId, shopId),
+      eq(productIssues.resourceId, resourceId),
+      eq(productIssues.issueCode, issueCode),
+      eq(productIssues.status, "open"),
+      isNull(productIssues.deletedAt),
+    ),
+  });
+  if (existing) return;
+  await db.insert(productIssues).values({
+    shopId,
+    resourceId,
+    resourceType: "product",
+    issueCode,
+    title,
+    detailsJson: details ? JSON.stringify(details) : null,
+  });
+}
+
+function detectProductIssues(shopId: number, product: ProductNode) {
+  const jobs: Promise<void>[] = [];
+  if (!product.descriptionHtml || product.descriptionHtml.trim().length < 20) {
+    jobs.push(
+      upsertIssue(shopId, product.id, "missing_description", "Missing or short description", {
+        title: product.title,
+      }),
+    );
+  }
+  const variants = product.variants?.nodes ?? [];
+  if (variants.some((v) => !v.sku)) {
+    jobs.push(
+      upsertIssue(shopId, product.id, "missing_sku", "Variant missing SKU", {
+        title: product.title,
+      }),
+    );
+  }
+  if ((product.media?.nodes?.length ?? 0) === 0) {
+    jobs.push(
+      upsertIssue(shopId, product.id, "no_media", "Product has no media", {
+        title: product.title,
+      }),
+    );
+  }
+  return Promise.all(jobs);
+}
+
+export async function scanSingleProduct(
+  shopId: number,
+  admin: Admin,
+  productGid: string,
+) {
+  const res = await admin.graphql(
+    `#graphql
+    query ProductScan($id: ID!) {
+      product(id: $id) {
+        id title descriptionHtml status
+        variants(first: 50) { nodes { id sku price } }
+        media(first: 5) { nodes { id } }
+      }
+    }`,
+    { variables: { id: productGid } },
+  );
+  const json = await res.json();
+  const product = json.data?.product as ProductNode | null;
+  if (!product) return;
+  await detectProductIssues(shopId, product);
+}
+
+export async function clearProductIssues(shopId: number, productGid: string) {
+  await db
+    .update(productIssues)
+    .set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(productIssues.shopId, shopId),
+        eq(productIssues.resourceId, productGid),
+        eq(productIssues.status, "open"),
+      ),
+    );
+}
+
+export async function scanProducts(
+  shopId: number,
+  admin: Admin,
+  cursor?: string | null,
+) {
+  const res = await admin.graphql(
+    `#graphql
+    query ProductsScan($cursor: String) {
+      products(first: 25, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id title descriptionHtml status
+          variants(first: 50) { nodes { id sku price } }
+          media(first: 5) { nodes { id } }
+        }
+      }
+    }`,
+    { variables: { cursor: cursor ?? null } },
+  );
+  const json = await res.json();
+  const connection = json.data?.products;
+  for (const product of (connection?.nodes ?? []) as ProductNode[]) {
+    await detectProductIssues(shopId, product);
+  }
+  return {
+    hasNextPage: Boolean(connection?.pageInfo?.hasNextPage),
+    endCursor: (connection?.pageInfo?.endCursor as string | null) ?? null,
+  };
+}

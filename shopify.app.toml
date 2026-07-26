@@ -1,0 +1,56 @@
+# Learn more: https://shopify.dev/docs/apps/tools/cli/configuration
+
+name = "CorePilot AI"
+client_id = "a4ba88c8d3f3c2c642fb0791258c1142"
+application_url = "https://trans-developer-introductory-replied.trycloudflare.com"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+
+[access_scopes]
+scopes = "read_products,write_products,read_inventory,write_inventory,read_orders,read_customers,read_content,write_content,read_themes,write_themes,read_online_store_navigation,write_files"
+
+[auth]
+redirect_urls = [
+  "https://trans-developer-introductory-replied.trycloudflare.com/auth/callback",
+  "https://trans-developer-introductory-replied.trycloudflare.com/auth/shopify/callback",
+  "https://trans-developer-introductory-replied.trycloudflare.com/api/auth/callback"
+]
+
+[app_preferences]
+url = "https://trans-developer-introductory-replied.trycloudflare.com/app/settings/general"
+
+[webhooks]
+api_version = "2025-01"
+
+  # orders/* + customers/* compliance need Protected Customer Data approval.
+  # Re-add after Partner Dashboard → API access → Protected customer data.
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "products/create" ]
+  uri = "/webhooks/products/create"
+
+  [[webhooks.subscriptions]]
+  topics = [ "products/update" ]
+  uri = "/webhooks/products/update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "products/delete" ]
+  uri = "/webhooks/products/delete"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app_subscriptions/update" ]
+  uri = "/webhooks/app_subscriptions/update"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shop/redact"
+  compliance_topics = [ "shop/redact" ]

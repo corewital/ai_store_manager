@@ -1,0 +1,13 @@
+node_modules/
+.cache/
+build/
+dist/
+.env
+.env.*
+!.env.example
+.vercel/
+storage/uploads/
+storage/tmp/
+*.log
+.DS_Store
+.shopify/

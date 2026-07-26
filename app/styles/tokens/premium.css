@@ -1,0 +1,14 @@
+[data-design-tier="premium"] {
+  --color-bg: #f1f5f9;
+  --color-surface: #ffffff;
+  --color-border: #cbd5e1;
+  --color-text: #1e293b;
+  --color-text-muted: #475569;
+  --color-accent: #0891b2;
+  --color-accent-hover: #0e7490;
+  --color-success: #059669;
+  --color-danger: #b91c1c;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --shadow-sm: 0 2px 4px rgba(30, 41, 59, 0.08);
+}

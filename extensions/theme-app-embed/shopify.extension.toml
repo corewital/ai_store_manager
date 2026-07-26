@@ -1,0 +1,11 @@
+api_version = "2025-01"
+
+[[extensions]]
+name = "AI Store Manager Embed"
+handle = "ai-store-manager-embed"
+
+uid = "8b36a840-3054-6acb-aba3-d76f39515d87ac12d6f2"
+type = "theme_app_extension"
+
+[extensions.capabilities]
+app_embed = true

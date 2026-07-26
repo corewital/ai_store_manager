@@ -1,0 +1,17 @@
+---
+description: Low-token build protocol — always follow before coding
+alwaysApply: true
+---
+
+# Build protocol (token budget)
+
+1. **First reads only:** `CURRENT.md`, then `PROGRESS.md`. Never open `docs/spec.md` unless `CURRENT.md` names a Spec section.
+2. **One task:** Implement only the task in `CURRENT.md`. No later phases, no drive-by refactors.
+3. **Targeted edits:** Diff existing files. Do not regenerate working files.
+4. **No spec restating:** Cite `Sec N` only. Do not paste/summarize the full product spec in chat.
+5. **Reuse first:** DataTable, sweetalert, fontawesome, storage, settings, plan services — no duplicates.
+6. **Config over code:** Business values → `systemSettings` / `appSettings` / `planFeatures` (Sec 28). Secrets stay in `.env`.
+7. **Hard rules:** Gemini = text only. Image pixels = `sharp` only. Soft-delete via `deletedAt`. Decisions in `docs/DECISIONS.md` — do not re-ask.
+8. **Closeout:** Check the PROGRESS line, rewrite `CURRENT.md` to the next unchecked task, stop.
+9. **Commit:** Only when user asks; one PROGRESS item per commit.
+10. **Tests:** Only what the current task needs.

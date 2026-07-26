@@ -1,0 +1,48 @@
+.index {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  text-align: center;
+  padding: 1rem;
+}
+
+.content {
+  display: grid;
+  gap: 2rem;
+}
+
+.heading {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.text {
+  font-size: 1.2rem;
+  margin: 0;
+}
+
+.form {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  gap: 1rem;
+}
+
+.label {
+  display: grid;
+  gap: 0.2rem;
+  text-align: left;
+  font-size: 1rem;
+}
+
+.input {
+  padding: 0.4rem;
+}
+
+.button {
+  padding: 0.4rem;
+}
