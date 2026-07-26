@@ -1,5 +1,5 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
-import { db } from "../../db/client";
+import { db, insertReturningId } from "../../db/client";
 import { aiApiKeys, aiProviders } from "../../db/schema";
 
 export const DEFAULT_PROVIDERS = [
@@ -117,14 +117,11 @@ export async function addApiKey(
     ),
   });
   if (dup) return dup;
-  const [{ id }] = await db
-    .insert(aiApiKeys)
-    .values({
-      providerId: provider.id,
-      apiKey,
-      label: label || null,
-      status: "active",
-    })
-    .$returningId();
+  const id = await insertReturningId(aiApiKeys, {
+    providerId: provider.id,
+    apiKey,
+    label: label || null,
+    status: "active",
+  });
   return db.query.aiApiKeys.findFirst({ where: eq(aiApiKeys.id, id) });
 }

@@ -16,7 +16,8 @@
     "db:migrate": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:seed": "tsx app/db/seeders/index.ts",
-    "db:fresh": "drizzle-kit push --force && npm run db:seed"
+    "db:fresh": "drizzle-kit push --force && npm run db:seed",
+    "db:migrate-mysql": "tsx scripts/migrate-mysql-to-turso.ts"
   },
   "engines": {
     "node": ">=20.19 <22 || >=22.12"

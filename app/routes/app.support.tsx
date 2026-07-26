@@ -19,7 +19,7 @@ import { TitleBar } from "@shopify/app-bridge-react";
 import { useState } from "react";
 
 import { authenticate } from "../shopify.server";
-import { db } from "../db/client";
+import { db, insertReturningId } from "../db/client";
 import {
   adminUsers,
   appSettings,
@@ -161,18 +161,20 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Subject and message are required" });
   }
 
-  const [ticket] = await db
-    .insert(supportTickets)
-    .values({ shopId: shop.id, subject, priority, status: "open" })
-    .$returningId();
+  const ticketId = await insertReturningId(supportTickets, {
+    shopId: shop.id,
+    subject,
+    priority,
+    status: "open",
+  });
 
   await db.insert(supportMessages).values({
-    ticketId: ticket.id,
+    ticketId,
     body,
     fromMerchantEmail: merchantEmail,
   });
 
-  return json({ ok: true, ticketId: ticket.id, replied: false });
+  return json({ ok: true, ticketId, replied: false });
 }
 
 function fmt(iso: string | null) {

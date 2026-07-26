@@ -109,4 +109,5 @@ Session paste: see `START.md`. Spec: `docs/spec.md` (section only). Decisions: `
 - [x] Admin store Details: merchant module mirror + scan/fix via offline token; removed Audit login
 - [x] Async jobs: store API token+appUrl; cron process-jobs; Details UI pagination/bulk/images; super_admin credentials
 - [x] Admin console v4: collapsible sidebar, ticket threads (admin+app), audit filters/pagination, installs grid/table + bulk, install detail modules/activity, revenue dashboard charts, cron history + per-store jobs + rerun; removed Compliance page and Gemini key from System settings
-- [ ] 15.7 Deploy Vercel + Turso + secrets; `shopify app deploy`
+- [x] 15.7a Hobby cron fix + Turso schema/seed + MySQL→Turso data copy; `docs/DEPLOY.md`
+- [ ] 15.7 Deploy Vercel + secrets; `shopify app deploy` + custom subdomain

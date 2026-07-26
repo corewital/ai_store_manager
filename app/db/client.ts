@@ -1,41 +1,53 @@
 import "dotenv/config";
-import { createPool, type Pool } from "mysql2/promise";
-import { drizzle, type MySql2Database } from "drizzle-orm/mysql2";
+import { createClient } from "@libsql/client";
+import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
 import * as schema from "./schema";
 
 type Schema = typeof schema;
 
-let _db: MySql2Database<Schema> | undefined;
-let _pool: Pool | undefined;
+let _db: LibSQLDatabase<Schema> | undefined;
 
-function getPool(): Pool {
-  if (_pool) return _pool;
-
-  const host = process.env.DB_HOST || "127.0.0.1";
-  const port = Number(process.env.DB_PORT || 3306);
-  const user = process.env.DB_USER || "root";
-  const password = process.env.DB_PASSWORD || "";
-  const database = process.env.DB_NAME || "corepilot_ai";
-
-  _pool = createPool({
-    host,
-    port,
-    user,
-    password,
-    database,
-    connectionLimit: 10,
-  });
-  return _pool;
+function resolveUrl() {
+  const url = process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL || "";
+  if (url) return url;
+  // Local offline default (same SQLite dialect as Turso)
+  return "file:./data/local.db";
 }
 
-/** Local = MySQL. Set DB_PROVIDER=turso later when Turso keys are ready. */
-export const db = new Proxy({} as MySql2Database<Schema>, {
+function getDb() {
+  if (_db) return _db;
+  const url = resolveUrl();
+  const authToken = process.env.TURSO_AUTH_TOKEN || undefined;
+  const client = createClient({
+    url,
+    ...(authToken && !url.startsWith("file:") ? { authToken } : {}),
+  });
+  _db = drizzle(client, { schema });
+  return _db;
+}
+
+/**
+ * Production = Turso (TURSO_DATABASE_URL + TURSO_AUTH_TOKEN).
+ * Local = file:./data/local.db (or point TURSO_* at your Turso DB).
+ * Legacy MySQL is no longer used — Turso/libSQL is the single dialect (Sec 15.7).
+ */
+export const db = new Proxy({} as LibSQLDatabase<Schema>, {
   get(_target, prop, receiver) {
-    if (!_db) {
-      _db = drizzle(getPool(), { schema, mode: "default" });
-    }
-    return Reflect.get(_db, prop, receiver);
+    return Reflect.get(getDb(), prop, receiver);
   },
 });
 
-export type Db = MySql2Database<Schema>;
+export type Db = LibSQLDatabase<Schema>;
+
+/** Insert one row and return the new autoincrement id (SQLite/Turso). */
+export async function insertReturningId(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  table: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  values: any,
+): Promise<number> {
+  const rows = await getDb().insert(table).values(values).returning({ id: table.id });
+  const id = rows[0]?.id;
+  if (id == null) throw new Error("insertReturningId: no id returned");
+  return Number(id);
+}

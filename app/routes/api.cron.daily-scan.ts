@@ -1,5 +1,5 @@
 import { and, isNull, eq } from "drizzle-orm";
-import { db } from "../db/client";
+import { db, insertReturningId } from "../db/client";
 import { appSettings, cronRunLogs, shops } from "../db/schema";
 import { unauthenticated } from "../shopify.server";
 import { runFullScan } from "../services/scanners/run-full-scan.server";
@@ -44,14 +44,11 @@ async function maybeSendDailyReport(shopId: number, shopDomain: string) {
 export const loader = async ({ request }: { request: Request }) => {
   assertCronAuth(request);
 
-  const [{ id: runId }] = await db
-    .insert(cronRunLogs)
-    .values({
-      jobName: "daily-scan",
-      startedAt: new Date(),
-      status: "running",
-    })
-    .$returningId();
+  const runId = await insertReturningId(cronRunLogs, {
+    jobName: "daily-scan",
+    startedAt: new Date(),
+    status: "running",
+  });
 
   const activeShops = await db.query.shops.findMany({
     where: and(

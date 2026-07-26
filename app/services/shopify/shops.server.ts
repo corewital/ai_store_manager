@@ -1,5 +1,5 @@
 import { desc, eq } from "drizzle-orm";
-import { db } from "../../db/client";
+import { db, insertReturningId } from "../../db/client";
 import { activityLogs, appInstalls, sessions, shops } from "../../db/schema";
 
 async function syncInstallRecord(shop: typeof shops.$inferSelect) {
@@ -39,14 +39,11 @@ async function syncInstallRecord(shop: typeof shops.$inferSelect) {
     return existing.id;
   }
 
-  const [{ id }] = await db
-    .insert(appInstalls)
-    .values({
-      shopId: shop.id,
-      shopDomain: shop.shopDomain,
-      status: "active",
-    })
-    .$returningId();
+  const id = await insertReturningId(appInstalls, {
+    shopId: shop.id,
+    shopDomain: shop.shopDomain,
+    status: "active",
+  });
 
   await db.insert(activityLogs).values({
     action: "app_installed",
@@ -98,15 +95,12 @@ export async function ensureShop(
     await syncInstallRecord(existing);
     return existing;
   }
-  const [{ id }] = await db
-    .insert(shops)
-    .values({
-      shopDomain,
-      accessToken: accessToken ?? null,
-      appApiUrl,
-      installedAt: new Date(),
-    })
-    .$returningId();
+  const id = await insertReturningId(shops, {
+    shopDomain,
+    accessToken: accessToken ?? null,
+    appApiUrl,
+    installedAt: new Date(),
+  });
   const row = await db.query.shops.findFirst({ where: eq(shops.id, id) });
   if (!row) throw new Error("Failed to create shop");
   await syncInstallRecord(row);

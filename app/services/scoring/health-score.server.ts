@@ -1,5 +1,5 @@
 import { and, count, eq, isNull } from "drizzle-orm";
-import { db } from "../../db/client";
+import { db, insertReturningId } from "../../db/client";
 import {
   collectionIssues,
   healthScores,
@@ -131,10 +131,7 @@ export async function upsertTodayHealthScore(shopId: number) {
     return { ...breakdown, id: existing.id, date };
   }
 
-  const [{ id }] = await db
-    .insert(healthScores)
-    .values({ shopId, date, ...values })
-    .$returningId();
+  const id = await insertReturningId(healthScores, { shopId, date, ...values });
 
   return { ...breakdown, id, date };
 }

@@ -55,7 +55,7 @@ function sessionToValues(session: Session) {
   };
 }
 
-/** MySQL-backed Shopify session storage (local). Name kept for Phase 2 wiring. */
+/** Turso / libSQL Shopify session storage. */
 export class TursoSessionStorage implements SessionStorage {
   async storeSession(session: Session): Promise<boolean> {
     const shop = session.accessToken
@@ -68,7 +68,10 @@ export class TursoSessionStorage implements SessionStorage {
     await db
       .insert(sessions)
       .values({ ...values, createdAt: new Date() })
-      .onDuplicateKeyUpdate({ set: values });
+      .onConflictDoUpdate({
+        target: sessions.id,
+        set: values,
+      });
     return true;
   }
 

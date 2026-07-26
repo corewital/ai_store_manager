@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { db } from "../../db/client";
+import { db, insertReturningId } from "../../db/client";
 import { appSettings } from "../../db/schema";
 
 export async function getOrCreateSettings(shopId: number) {
@@ -8,10 +8,7 @@ export async function getOrCreateSettings(shopId: number) {
   });
   if (existing) return existing;
 
-  const [{ id }] = await db
-    .insert(appSettings)
-    .values({ shopId })
-    .$returningId();
+  const id = await insertReturningId(appSettings, { shopId });
   const created = await db.query.appSettings.findFirst({
     where: eq(appSettings.id, id),
   });

@@ -8,6 +8,11 @@ dist/
 .vercel/
 storage/uploads/
 storage/tmp/
+data/
+*.db
+*.db-*
 *.log
 .DS_Store
 .shopify/
+app/db/schema.mysql.bak.ts
+

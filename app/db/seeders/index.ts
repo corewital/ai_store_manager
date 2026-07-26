@@ -2,7 +2,7 @@ import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { and, eq } from "drizzle-orm";
 
-import { db } from "../client";
+import { db, insertReturningId } from "../client";
 import {
   adminUsers,
   billingPlans,
@@ -117,14 +117,6 @@ const PLAN_DEFS = [
   },
 ];
 
-async function insertId(
-  run: () => Promise<{ insertId?: number }[] | [{ id: number }]>,
-): Promise<number> {
-  const result = await run();
-  const first = result[0] as { id?: number; insertId?: number };
-  return Number(first.id ?? first.insertId);
-}
-
 async function seedRoles() {
   const roleIds: Record<string, number> = {};
   for (const r of ROLE_DEFS) {
@@ -135,11 +127,11 @@ async function seedRoles() {
       roleIds[r.slug] = existing.id;
       continue;
     }
-    const ids = await db
-      .insert(roles)
-      .values({ name: r.name, slug: r.slug, description: r.description })
-      .$returningId();
-    roleIds[r.slug] = ids[0].id;
+    roleIds[r.slug] = await insertReturningId(roles, {
+      name: r.name,
+      slug: r.slug,
+      description: r.description,
+    });
   }
   return roleIds;
 }
@@ -154,11 +146,10 @@ async function seedPermissions() {
       permIds[p.key] = existing.id;
       continue;
     }
-    const ids = await db
-      .insert(permissions)
-      .values({ key: p.key, description: p.description })
-      .$returningId();
-    permIds[p.key] = ids[0].id;
+    permIds[p.key] = await insertReturningId(permissions, {
+      key: p.key,
+      description: p.description,
+    });
   }
   return permIds;
 }
@@ -222,17 +213,13 @@ async function seedBillingPlans() {
     if (existing) {
       planId = existing.id;
     } else {
-      const ids = await db
-        .insert(billingPlans)
-        .values({
-          slug: plan.slug,
-          name: plan.name,
-          priceCents: plan.priceCents,
-          trialDays: plan.trialDays,
-          shopifyPlanHandle: plan.shopifyPlanHandle,
-        })
-        .$returningId();
-      planId = ids[0].id;
+      planId = await insertReturningId(billingPlans, {
+        slug: plan.slug,
+        name: plan.name,
+        priceCents: plan.priceCents,
+        trialDays: plan.trialDays,
+        shopifyPlanHandle: plan.shopifyPlanHandle,
+      });
     }
 
     const feats = await db.query.planFeatures.findMany({

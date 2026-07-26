@@ -259,8 +259,9 @@ export default function AdminCronJobsPage() {
         <div>
           <h1>Cron jobs</h1>
           <p className="admin-page__lead" style={{ marginBottom: 0 }}>
-            daily-scan 03:00 UTC · process-jobs every minute · weekly-report Sun
-            04:00 UTC. Scans and bulk fixes always run here, never in the request.
+            Hobby Vercel: daily-scan 03:00 UTC · process-jobs 03:15 UTC ·
+            weekly-report Sun 04:00 UTC. Use Run buttons below for an immediate
+            tick. Upgrade to Pro for minute-level crons.
           </p>
         </div>
         <div className="admin-actions">

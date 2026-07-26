@@ -3,7 +3,7 @@ import { json, redirect } from "@remix-run/node";
 import { Form, useLoaderData } from "@remix-run/react";
 import { eq } from "drizzle-orm";
 
-import { db } from "../db/client";
+import { db, insertReturningId } from "../db/client";
 import { activityLogs, billingPlans } from "../db/schema";
 import { can, requireAdmin } from "../services/admin/auth.server";
 
@@ -29,16 +29,13 @@ export async function action({ request }: ActionFunctionArgs) {
       .replace(/[^a-z0-9_-]/g, "-");
     const name = String(form.get("name") || "").trim();
     if (!slug || !name) return json({ error: "Slug and name required" }, { status: 400 });
-    const [{ id }] = await db
-      .insert(billingPlans)
-      .values({
-        slug,
-        name,
-        priceCents: Number(form.get("priceCents") || 0),
-        trialDays: Number(form.get("trialDays") || 0),
-        shopifyPlanHandle: String(form.get("shopifyPlanHandle") || "") || null,
-      })
-      .$returningId();
+    const id = await insertReturningId(billingPlans, {
+      slug,
+      name,
+      priceCents: Number(form.get("priceCents") || 0),
+      trialDays: Number(form.get("trialDays") || 0),
+      shopifyPlanHandle: String(form.get("shopifyPlanHandle") || "") || null,
+    });
     await db.insert(activityLogs).values({
       actorAdminUserId: user.id,
       action: "billing_plan_create",
