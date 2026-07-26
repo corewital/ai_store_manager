@@ -12,6 +12,6 @@
 | Merchant listings default | List (IndexTable); Grid only Images/Collections |
 | Image pixels | `sharp` only — never an AI vision / Gemini pixel path |
 | Text AI | Multi-provider pool (`/admin/ai`): OpenAI, Gemini, Claude, OpenRouter, Z.AI, BigModel — key rotate + failover on quota |
-| DB now | Turso + Drizzle |
+| DB now | Turso + Drizzle (libSQL). Local: `file:./data/local.db` or same Turso cloud. Legacy MySQL only via `npm run db:migrate-mysql`. |
 | Hosting | Vercel + Cron |
 | Soft delete | All admin/merchant removable rows use `deletedAt` |
