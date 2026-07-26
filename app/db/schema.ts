@@ -35,6 +35,8 @@ export const shops = sqliteTable(
     accessToken: text("access_token"),
     appApiUrl: text("app_api_url"),
     plan: text("plan").notNull().default("free"),
+    /** shopify = synced from billing; admin = plan override (do not wipe on sync) */
+    planSource: text("plan_source").notNull().default("shopify"),
     timezone: text("timezone").default("UTC"),
     installedAt: integer("installed_at", { mode: "timestamp_ms" }),
     uninstalledAt: integer("uninstalled_at", { mode: "timestamp_ms" }),

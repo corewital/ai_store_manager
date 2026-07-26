@@ -8,13 +8,12 @@ import {
   Button,
   Banner,
   Text,
+  Badge,
+  InlineStack,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { useState } from "react";
-import { eq } from "drizzle-orm";
 import { authenticate } from "../shopify.server";
-import { db } from "../db/client";
-import { shops } from "../db/schema";
 import { SETTINGS_NAV, SubNav } from "../components/SubNav";
 import { getModuleVisibility } from "../services/admin/module-visibility.server";
 import {
@@ -26,44 +25,70 @@ import {
   type ScanModuleKey,
 } from "../services/shopify/scan-modules";
 import type { AppModuleVisibility } from "../services/admin/module-visibility";
+import { ensureShop } from "../services/shopify/shops.server";
+import { getShopPlan } from "../services/shopify/billing.server";
+import { isPlanFeatureEnabled } from "../services/shopify/plan-gate.server";
+import { PLANS } from "../config/plans";
+
+const LABELS: Record<string, string> = {
+  products: "Products (titles, SKU, descriptions)",
+  seo: "SEO (meta title/description length)",
+  images: "Images (alt text, missing media)",
+  inventory: "Inventory",
+  collections: "Collections (description & metadata)",
+  navigation: "Navigation",
+  theme: "Theme",
+  apps: "Apps",
+  performance: "Performance",
+};
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  const shop = await db.query.shops.findFirst({
-    where: eq(shops.shopDomain, session.shop),
-  });
-  const master = await getModuleVisibility();
-  if (!shop) {
-    return {
-      master,
-      enabled: Object.fromEntries(SCAN_MODULE_KEYS.map((m) => [m, true])),
-    };
+  const shop = await ensureShop(session.shop, session.accessToken);
+  const [master, enabled, plan] = await Promise.all([
+    getModuleVisibility(),
+    getShopModulesEnabledRaw(shop.id),
+    getShopPlan(shop.id),
+  ]);
+
+  const planAllowed: Record<string, boolean> = {};
+  for (const m of SCAN_MODULE_KEYS) {
+    const key = `module_${m}`;
+    planAllowed[m] = await isPlanFeatureEnabled(plan, key);
   }
-  const enabled = await getShopModulesEnabledRaw(shop.id);
-  return { master, enabled };
+
+  return {
+    master,
+    enabled,
+    plan,
+    planName: PLANS[plan]?.name ?? plan,
+    planAllowed,
+  };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  const shop = await db.query.shops.findFirst({
-    where: eq(shops.shopDomain, session.shop),
-  });
-  if (!shop) return { ok: false };
+  const shop = await ensureShop(session.shop, session.accessToken);
+  const plan = await getShopPlan(shop.id);
 
   const form = await request.formData();
-  const enabled = Object.fromEntries(
-    SCAN_MODULE_KEYS.map((m) => [m, form.get(m) === "on"]),
-  );
+  const enabled: Record<string, boolean> = {};
+  for (const m of SCAN_MODULE_KEYS) {
+    const planOk = await isPlanFeatureEnabled(plan, `module_${m}`);
+    // Locked plan modules stay off; others follow checkbox
+    enabled[m] = planOk && form.get(m) === "on";
+  }
   await saveShopModulesEnabled(shop.id, enabled);
   return { ok: true };
 };
 
 export default function SettingsModulesPage() {
-  const { enabled, master } = useLoaderData<typeof loader>();
+  const { enabled, master, planName, planAllowed } =
+    useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const [state, setState] = useState(enabled);
 
-  const available = SCAN_MODULE_KEYS.filter(
+  const visible = SCAN_MODULE_KEYS.filter(
     (m) => master[m as keyof AppModuleVisibility] !== false,
   );
 
@@ -74,46 +99,58 @@ export default function SettingsModulesPage() {
       <BlockStack gap="400">
         {fetcher.data?.ok && (
           <Banner tone="success">
-            Modules saved. Daily / queued scans will only run enabled modules.
+            Modules saved. Queue Scan and cron only run enabled scanners.
           </Banner>
         )}
+        <Banner tone="info">
+          Your plan: <strong>{planName}</strong>. Locked modules need an upgrade.
+          Unlocked ones can be toggled for Queue Scan.
+        </Banner>
         <fetcher.Form method="post">
           <Card>
             <BlockStack gap="300">
-              <Text as="p" tone="subdued">
-                Toggle which scanners run on Queue Scan and cron. Modules turned
-                off by Admin Core are hidden here and never scanned.
-              </Text>
-              {available.length === 0 && (
+              {visible.length === 0 && (
                 <Banner tone="warning">
-                  No modules are available — your admin disabled all health
-                  modules.
+                  No modules available — Admin Core disabled all health modules.
                 </Banner>
               )}
-              {available.map((m) => (
-                <Checkbox
-                  key={m}
-                  label={m.charAt(0).toUpperCase() + m.slice(1)}
-                  name={m}
-                  checked={state[m as ScanModuleKey] !== false}
-                  onChange={(v) =>
-                    setState((s) => ({ ...s, [m]: v }))
-                  }
-                />
-              ))}
-              {/* Keep admin-hidden keys submitted as off */}
+              {visible.map((m) => {
+                const allowed = planAllowed[m] !== false;
+                return (
+                  <InlineStack key={m} align="space-between" blockAlign="center">
+                    <Checkbox
+                      label={LABELS[m] || m}
+                      name={m}
+                      checked={allowed && state[m as ScanModuleKey] !== false}
+                      disabled={!allowed}
+                      onChange={(v) =>
+                        setState((s) => ({ ...s, [m]: v }))
+                      }
+                    />
+                    {!allowed && (
+                      <Badge tone="attention">Upgrade plan</Badge>
+                    )}
+                  </InlineStack>
+                );
+              })}
               {SCAN_MODULE_KEYS.filter(
                 (m) => master[m as keyof AppModuleVisibility] === false,
               ).map((m) => (
                 <input key={m} type="hidden" name={m} value="" />
               ))}
               <Button
+                url="/app/settings/billing"
+                variant="plain"
+              >
+                View plans & upgrade
+              </Button>
+              <Button
                 submit
                 variant="primary"
                 loading={fetcher.state !== "idle"}
-                disabled={available.length === 0}
+                disabled={visible.length === 0}
               >
-                Save
+                Save scanners
               </Button>
             </BlockStack>
           </Card>

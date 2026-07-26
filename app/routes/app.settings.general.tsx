@@ -8,7 +8,6 @@ import {
   TextField,
   Button,
   Banner,
-  Select,
   Checkbox,
   Divider,
 } from "@shopify/polaris";
@@ -22,49 +21,51 @@ import { getOrCreateSettings } from "../services/shopify/app-settings.server";
 import { ensureShop } from "../services/shopify/shops.server";
 import { SETTINGS_NAV, SubNav } from "../components/SubNav";
 
-const TIMEZONES = [
-  "UTC",
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Los_Angeles",
-  "Europe/London",
-  "Europe/Paris",
-  "Asia/Kolkata",
-  "Asia/Dubai",
-  "Asia/Singapore",
-  "Asia/Tokyo",
-  "Australia/Sydney",
-].map((z) => ({ label: z, value: z }));
-
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop, session.accessToken);
   const settings = await getOrCreateSettings(shop.id);
 
   let contactEmail = settings.notifyEmail ?? "";
-  if (!contactEmail) {
-    try {
-      const res = await admin.graphql(`#graphql
-        query { shop { email contactEmail } }`);
-      const json = await res.json();
-      contactEmail =
-        json.data?.shop?.contactEmail || json.data?.shop?.email || "";
-      if (contactEmail) {
-        await db
-          .update(appSettings)
-          .set({ notifyEmail: contactEmail, updatedAt: new Date() })
-          .where(eq(appSettings.id, settings.id));
-      }
-    } catch {
-      /* ignore */
+  let storeTimezone = shop.timezone ?? "UTC";
+
+  try {
+    const res = await admin.graphql(`#graphql
+      query {
+        shop {
+          email
+          contactEmail
+          ianaTimezone
+        }
+      }`);
+    const json = await res.json();
+    const shopData = json.data?.shop;
+    if (!contactEmail) {
+      contactEmail = shopData?.contactEmail || shopData?.email || "";
     }
+    if (shopData?.ianaTimezone) {
+      storeTimezone = String(shopData.ianaTimezone);
+    }
+    // Always keep store timezone in sync with Shopify
+    if (storeTimezone && storeTimezone !== shop.timezone) {
+      await db
+        .update(shops)
+        .set({ timezone: storeTimezone, updatedAt: new Date() })
+        .where(eq(shops.id, shop.id));
+    }
+    if (contactEmail && contactEmail !== settings.notifyEmail) {
+      await db
+        .update(appSettings)
+        .set({ notifyEmail: contactEmail, updatedAt: new Date() })
+        .where(eq(appSettings.id, settings.id));
+    }
+  } catch {
+    /* ignore GraphQL errors */
   }
 
   return {
-    timezone: shop.timezone ?? "UTC",
+    timezone: storeTimezone,
     notifyEmail: contactEmail,
-    notifyFrequency: settings.notifyFrequency ?? "daily",
     autoFixEnabled: settings.autoFixEnabled ?? false,
     installedAt: shop.installedAt
       ? new Date(shop.installedAt).toISOString()
@@ -77,21 +78,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop, session.accessToken);
   const form = await request.formData();
-  const timezone = String(form.get("timezone") ?? "UTC");
   const notifyEmail = String(form.get("notifyEmail") ?? "").trim();
-  const notifyFrequency = String(form.get("notifyFrequency") ?? "daily");
   const autoFixEnabled = form.get("autoFixEnabled") === "on";
 
-  await db
-    .update(shops)
-    .set({ timezone, updatedAt: new Date() })
-    .where(eq(shops.id, shop.id));
   const settings = await getOrCreateSettings(shop.id);
   await db
     .update(appSettings)
     .set({
       notifyEmail: notifyEmail || null,
-      notifyFrequency,
       autoFixEnabled,
       updatedAt: new Date(),
     })
@@ -103,9 +97,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 export default function SettingsGeneralPage() {
   const data = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
-  const [tz, setTz] = useState(data.timezone);
   const [email, setEmail] = useState(data.notifyEmail);
-  const [freq, setFreq] = useState(data.notifyFrequency);
   const [autoFix, setAutoFix] = useState(data.autoFixEnabled);
 
   return (
@@ -129,14 +121,10 @@ export default function SettingsGeneralPage() {
                   ? new Date(data.installedAt).toLocaleString()
                   : "—"}
               </Text>
-              <Select
-                label="Timezone"
-                name="timezone"
-                options={TIMEZONES}
-                value={tz}
-                onChange={setTz}
-                helpText="Used for scan scheduling and report send times."
-              />
+              <Banner tone="info">
+                Timezone is set automatically from your Shopify store:{" "}
+                <strong>{data.timezone}</strong>
+              </Banner>
               <Divider />
               <Text as="h2" variant="headingMd">
                 Notifications
@@ -148,18 +136,7 @@ export default function SettingsGeneralPage() {
                 value={email}
                 onChange={setEmail}
                 autoComplete="email"
-                helpText="Defaults to your Shopify contact email."
-              />
-              <Select
-                label="Report frequency"
-                name="notifyFrequency"
-                options={[
-                  { label: "Daily", value: "daily" },
-                  { label: "Weekly", value: "weekly" },
-                  { label: "Off", value: "off" },
-                ]}
-                value={freq}
-                onChange={setFreq}
+                helpText="Defaults to your Shopify contact email. Report cadence follows your plan (weekly / daily)."
               />
               <Checkbox
                 label="Auto-fix low-risk issues (when available)"

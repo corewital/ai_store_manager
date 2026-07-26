@@ -5,12 +5,11 @@
 **Spec:** Sec 15.7
 
 ## Do
-- Push code to GitHub (`dev` → `main`) so Vercel deploys scan-now + plan limits
-- Confirm `SHOPIFY_APP_URL=https://corepilotai.corewital.com` on Vercel
-- Run `shopify app deploy` for production URLs
+- Push `dev`/`main` to GitHub so Vercel picks up latest (settings, plans, favicon)
+- Follow `docs/SHOPIFY_PUBLIC_LISTING.md` for App Store + billing
 
 ## Done this pass
-- Scans/fixes process immediately (Hobby cron is daily-only)
-- Plan limits Free→Enterprise + admin editable features
-- Home activity = 5; One-Click Fix + Reports show real rows
-- Cron status legend: ok / partial / failed
+- Removed Report frequency; timezone auto from Shopify store
+- Modules plan-gated toggles; Reports merchant-friendly UI
+- Cron cadence by plan; plan override survives sync (`planSource=admin`)
+- Favicon + “CorePilot AI Admin” title; public listing docs

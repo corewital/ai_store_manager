@@ -143,8 +143,11 @@ export default function AdminBillingPlans() {
   return (
     <div className="admin-page">
       <p className="admin-page__lead">
-        Edit plan prices and per-plan limits (products, collections, AI fixes,
-        module visibility). Changes apply to merchant gating immediately.
+        Edit plan prices and limits (products, collections, AI fixes, module
+        toggles). Merchant app enforces these immediately.{" "}
+        <strong>Enterprise</strong> uses Contact support / admin override for
+        custom deals; Shopify recurring charges apply to Starter–Business when
+        the app is public.
       </p>
 
       <div className="admin-card">

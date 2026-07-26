@@ -304,27 +304,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
         throw new Response("Forbidden", { status: 403 });
       }
       const plan = String(form.get("plan") || "free").trim();
-      await db
-        .update(shops)
-        .set({ plan, updatedAt: new Date() })
-        .where(eq(shops.id, shopId));
-      const existing = await db.query.billingSubscriptions.findFirst({
-        where: and(
-          eq(billingSubscriptions.shopId, shopId),
-          isNull(billingSubscriptions.deletedAt),
-        ),
-        orderBy: [desc(billingSubscriptions.updatedAt)],
-      });
-      if (existing) {
-        await db
-          .update(billingSubscriptions)
-          .set({ plan, status: "active", updatedAt: new Date() })
-          .where(eq(billingSubscriptions.id, existing.id));
-      } else {
-        await db
-          .insert(billingSubscriptions)
-          .values({ shopId, plan, status: "active" });
-      }
+      const { adminOverridePlan } = await import(
+        "../services/shopify/billing.server"
+      );
+      await adminOverridePlan(shopId, plan);
       await db.insert(activityLogs).values({
         actorAdminUserId: user.id,
         action: "store_plan_override",
@@ -332,7 +315,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         entityId: String(id),
         metaJson: JSON.stringify({ plan, shopDomain: domain }),
       });
-      flash = `Plan set to ${plan}`;
+      flash = `Plan override set to ${plan} (app side updated; survives Shopify sync)`;
     } else if (intent === "freeze" || intent === "unfreeze") {
       const frozenAt = intent === "freeze" ? new Date() : null;
       await db
@@ -761,6 +744,12 @@ export default function AdminInstallDetail() {
 
             <div className="admin-card">
               <div className="admin-card__title">Plan override</div>
+              <p className="admin-page__lead" style={{ marginTop: 0 }}>
+                Sets the merchant plan in-app immediately (modules, scan limits,
+                AI caps). Marked as <strong>admin override</strong> so Shopify
+                sync will not reset it. For paid Shopify billing, the merchant
+                still confirms a charge on Plans &amp; Billing.
+              </p>
               <Form method="post" className="admin-form">
                 <input type="hidden" name="intent" value="set_plan" />
                 <input type="hidden" name="tab" value="overview" />

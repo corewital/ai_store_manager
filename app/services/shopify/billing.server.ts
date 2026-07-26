@@ -26,6 +26,7 @@ export async function upsertSubscription(input: {
   status: string;
   shopifySubscriptionId?: string | null;
   currentPeriodEnd?: Date | null;
+  planSource?: "shopify" | "admin";
 }) {
   const existing = await db.query.billingSubscriptions.findFirst({
     where: eq(billingSubscriptions.shopId, input.shopId),
@@ -53,6 +54,7 @@ export async function upsertSubscription(input: {
     .update(shops)
     .set({
       plan: input.status === "active" ? input.plan : "free",
+      planSource: input.planSource ?? "shopify",
       updatedAt: new Date(),
     })
     .where(eq(shops.id, input.shopId));
@@ -155,11 +157,18 @@ export async function createSubscription(
   }
 }
 
-/** Reads live subscriptions and syncs the local record. */
+/** Reads live subscriptions and syncs the local record.
+ *  Respects admin plan overrides (planSource=admin) so they are not wiped.
+ */
 export async function syncSubscription(
   admin: AdminApiContext,
   shopId: number,
 ): Promise<PlanSlug> {
+  const shop = await db.query.shops.findFirst({ where: eq(shops.id, shopId) });
+  if (shop?.planSource === "admin") {
+    return getShopPlan(shopId);
+  }
+
   try {
     const res = await admin.graphql(
       `#graphql
@@ -176,7 +185,12 @@ export async function syncSubscription(
     );
 
     if (!active) {
-      await upsertSubscription({ shopId, plan: "free", status: "cancelled" });
+      await upsertSubscription({
+        shopId,
+        plan: "free",
+        status: "cancelled",
+        planSource: "shopify",
+      });
       return "free";
     }
 
@@ -193,11 +207,24 @@ export async function syncSubscription(
       currentPeriodEnd: active.currentPeriodEnd
         ? new Date(active.currentPeriodEnd)
         : null,
+      planSource: "shopify",
     });
     return slug;
   } catch {
     return getShopPlan(shopId);
   }
+}
+
+/** Admin Core plan override — survives Shopify sync until cleared. */
+export async function adminOverridePlan(shopId: number, plan: string) {
+  const slug = plan in PLANS ? plan : "free";
+  await upsertSubscription({
+    shopId,
+    plan: slug,
+    status: "active",
+    planSource: "admin",
+  });
+  return slug as PlanSlug;
 }
 
 export async function cancelSubscription(

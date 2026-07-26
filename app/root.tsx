@@ -1,3 +1,4 @@
+import type { LinksFunction, MetaFunction } from "@remix-run/node";
 import {
   Links,
   Meta,
@@ -6,9 +7,18 @@ import {
   ScrollRestoration,
 } from "@remix-run/react";
 
+export const meta: MetaFunction = () => [
+  { title: "CorePilot AI" },
+  { name: "description", content: "Shopify store health & optimization" },
+];
+
+export const links: LinksFunction = () => [
+  { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+];
+
 export default function App() {
   return (
-    <html>
+    <html lang="en">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />

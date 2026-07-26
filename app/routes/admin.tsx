@@ -1,4 +1,4 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { Outlet, useLoaderData } from "@remix-run/react";
 import { AppProvider } from "@shopify/polaris";
@@ -11,10 +11,15 @@ import standardTokens from "../styles/tokens/standard.css?url";
 
 const PUBLIC_PATHS = ["/admin/login", "/admin/logout", "/admin/signup"];
 
-export const links = () => [
+export const meta: MetaFunction = () => [
+  { title: "CorePilot AI Admin" },
+];
+
+export const links: LinksFunction = () => [
   { rel: "stylesheet", href: polarisStyles },
   { rel: "stylesheet", href: standardTokens },
   { rel: "stylesheet", href: adminStyles },
+  { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
 ];
 
 export async function loader({ request }: LoaderFunctionArgs) {
