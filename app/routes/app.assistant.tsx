@@ -83,8 +83,7 @@ function reasonBanner(reason: string) {
     return (
       <Banner tone="warning" title="AI is not configured yet">
         <Text as="p">
-          Ask your platform admin to add a Gemini API key under Admin → System
-          Settings. AI features stay off until then.
+          Something went wrong please try again after sometime
         </Text>
       </Banner>
     );

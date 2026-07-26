@@ -74,13 +74,17 @@ async function markKeyFail(id: number, error: string) {
 }
 
 async function reviveCooldowns() {
+  const nowMs = Date.now();
   await db
     .update(aiApiKeys)
     .set({ status: "active", cooldownUntil: null, updatedAt: new Date() })
     .where(
       and(
         eq(aiApiKeys.status, "cooldown"),
-        or(isNull(aiApiKeys.cooldownUntil), sql`${aiApiKeys.cooldownUntil} < NOW()`),
+        or(
+          isNull(aiApiKeys.cooldownUntil),
+          sql`${aiApiKeys.cooldownUntil} < ${nowMs}`,
+        ),
       ),
     );
 }
@@ -112,7 +116,13 @@ export async function hasAnyAiKey(): Promise<boolean> {
     where: and(isNull(aiApiKeys.deletedAt), eq(aiApiKeys.status, "active")),
   });
   if (row) return true;
-  return Boolean(process.env.GEMINI_API_KEY?.trim());
+  // Env fallback only counts if we can actually route (gemini provider exists or will be created)
+  if (process.env.GEMINI_API_KEY?.trim()) {
+    const { ensureDefaultProviders } = await import("./ai-admin.server");
+    await ensureDefaultProviders();
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -123,6 +133,9 @@ export async function routeGenerateText(
   opts?: { preferredSlug?: string | null },
 ): Promise<{ text: string; provider: string; keyId: number | null }> {
   await reviveCooldowns();
+  // Ensure provider rows exist so GEMINI_API_KEY / empty-DB installs can still route
+  const { ensureDefaultProviders } = await import("./ai-admin.server");
+  await ensureDefaultProviders();
   const routing = await getAiRouting();
   const preferred = opts?.preferredSlug || routing.preferred;
   const providers = await listEnabledProviders(preferred);

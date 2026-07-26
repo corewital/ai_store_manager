@@ -22,8 +22,8 @@ export async function resolveGeminiApiKey(
   return process.env.GEMINI_API_KEY?.trim() || null;
 }
 
-export async function isAiConfigured(apiKey?: string | null) {
-  if (apiKey?.trim()) return true;
+/** True when Admin → AI has an active key (or GEMINI_API_KEY env fallback). */
+export async function isAiConfigured(_apiKey?: string | null) {
   return hasAnyAiKey();
 }
 

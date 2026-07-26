@@ -1,26 +1,28 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db/client";
 import { appSettings } from "../../db/schema";
-import { isAiConfigured } from "./gemini-client.server";
-import { getSetting } from "../admin/settings.server";
+import { hasAnyAiKey } from "./ai-router.server";
 
 export type ShopAiConfig = {
+  /** @deprecated Prefer multi-provider pool via ai-router; kept for tone/enabled only */
   apiKey: string | null;
   tone: string;
   enabled: boolean;
   configured: boolean;
 };
 
+/**
+ * Shop-level AI prefs + whether ANY admin AI provider key is ready.
+ * Configured = Admin → AI (providers/keys), not System Settings Gemini.
+ */
 export async function getShopAiConfig(shopId: number): Promise<ShopAiConfig> {
   const row = await db.query.appSettings.findFirst({
     where: eq(appSettings.shopId, shopId),
   });
-  const globalKey = await getSetting<string>("gemini_api_key", "");
-  const apiKey = row?.geminiApiKey?.trim() || globalKey?.trim() || null;
   return {
-    apiKey,
+    apiKey: null,
     tone: row?.aiTone ?? "concise",
     enabled: row?.aiEnabled ?? true,
-    configured: await isAiConfigured(apiKey),
+    configured: await hasAnyAiKey(),
   };
 }
