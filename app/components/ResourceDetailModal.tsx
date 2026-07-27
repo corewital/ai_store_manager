@@ -115,6 +115,15 @@ export function ResourceDetailModal({
       ? "Something went wrong applying this fix."
       : null);
 
+  const showErr =
+    errText &&
+    errText !== "[object Response]" &&
+    !/^\[object /.test(errText)
+      ? errText
+      : fetcher.data && !fetcher.data.ok
+        ? "Fix failed. If this keeps happening, reopen the app from Shopify Admin to refresh the session."
+        : null;
+
   return (
     <>
       <Modal
@@ -170,7 +179,7 @@ export function ResourceDetailModal({
       >
         <Modal.Section>
           <BlockStack gap="400">
-            {errText && <Banner tone="critical">{errText}</Banner>}
+            {showErr && <Banner tone="critical">{showErr}</Banner>}
 
             {noMedia && (
               <Banner tone="info">

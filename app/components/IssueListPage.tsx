@@ -163,7 +163,16 @@ export function IssueListPage({
             : "No scan yet — run one from the Dashboard"}
         </Text>
         {notice && (
-          <Banner tone="success" onDismiss={() => setNotice(null)}>
+          <Banner
+            tone={
+              /fail|error|limit|not configured|HTTP |upgrade|could not/i.test(
+                notice,
+              )
+                ? "critical"
+                : "success"
+            }
+            onDismiss={() => setNotice(null)}
+          >
             {notice}
           </Banner>
         )}

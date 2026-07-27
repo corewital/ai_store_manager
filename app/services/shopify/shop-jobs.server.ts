@@ -203,7 +203,11 @@ async function processOneShop(
       message: `fix ok=${ok} fail=${fail}`,
     };
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const { formatCaughtErrorAsync, shouldRethrowResponse } = await import(
+      "../../lib/errors.server"
+    );
+    if (shouldRethrowResponse(error)) throw error;
+    const msg = await formatCaughtErrorAsync(error);
     await setJob(shop.id, {
       jobStatus: "failed",
       jobMessage: msg.slice(0, 500),

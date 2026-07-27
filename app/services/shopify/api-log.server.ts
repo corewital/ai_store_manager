@@ -40,7 +40,9 @@ export async function loggedAdminGraphql(
       operation,
       status: "error",
       durationMs: Date.now() - started,
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: (await import("../../lib/errors.server")).formatCaughtError(
+        error,
+      ),
     });
     throw error;
   }

@@ -428,10 +428,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
       });
     }
   } catch (error) {
-    flash =
-      error instanceof Error
-        ? `Error: ${error.message}`
-        : "Action failed — offline session may be missing";
+    const { formatCaughtErrorAsync, shouldRethrowResponse } = await import(
+      "../lib/errors.server"
+    );
+    if (shouldRethrowResponse(error)) throw error;
+    flash = `Error: ${await formatCaughtErrorAsync(error)}`;
   }
 
   return redirect(

@@ -25,9 +25,9 @@ export function MerchantIssuePage({
       <BlockStack gap="400">
         {fetcher.data && !fetcher.data.ok && (
           <Banner tone="critical">
-            {fetcher.data.error === "fix_failed"
-              ? "Fix failed. Try again."
-              : "Could not apply fix."}
+            {fetcher.data.error && fetcher.data.error !== "fix_failed"
+              ? fetcher.data.error
+              : "Fix failed. Try again."}
           </Banner>
         )}
         {fetcher.data?.ok && <Banner tone="success">Fixed.</Banner>}

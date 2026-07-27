@@ -20,6 +20,13 @@ import {
 import { fetchProductAiContext } from "../ai/product-context.server";
 import { uploadOptimizedProductImage } from "../images/upload-optimized.server";
 import { enqueueFix, markFixDone } from "./fix-queue.server";
+import {
+  formatCaughtErrorAsync,
+  shouldRethrowResponse,
+} from "../../lib/errors.server";
+import { assertCanAiFix } from "./plan-gate.server";
+import { getShopPlan } from "./billing.server";
+import { hasAnyAiKey } from "../ai/ai-router.server";
 
 type IssueTable =
   | typeof productIssues
@@ -178,9 +185,10 @@ export async function applyManualFix(
     await markFixDone(job.id);
     return { ok: true };
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
+    if (shouldRethrowResponse(error)) throw error;
+    const msg = await formatCaughtErrorAsync(error);
     await markFixDone(job.id, msg);
-    return { ok: false, error: "fix_failed" };
+    return { ok: false, error: msg.slice(0, 180) || "fix_failed" };
   }
 }
 
@@ -205,6 +213,23 @@ export async function runModuleFix(
       action: row.issueCode,
     });
     return { ok: true };
+  }
+
+  // Enforce plan AI-fix limit (except upload-only no_media)
+  if (!(module === "products" && row.issueCode === "no_media")) {
+    try {
+      if (!(await hasAnyAiKey())) {
+        return {
+          ok: false,
+          error: "AI is not configured. Add an API key in Admin → AI providers.",
+        };
+      }
+      const plan = await getShopPlan(shopId);
+      await assertCanAiFix(shopId, plan);
+    } catch (error) {
+      if (shouldRethrowResponse(error)) throw error;
+      return { ok: false, error: await formatCaughtErrorAsync(error) };
+    }
   }
 
   const job = opts?.existingJobId
@@ -393,7 +418,8 @@ export async function runModuleFix(
     await markFixDone(job.id);
     return { ok: true };
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
+    if (shouldRethrowResponse(error)) throw error;
+    const msg = await formatCaughtErrorAsync(error);
     await markFixDone(job.id, msg);
     return { ok: false, error: msg.slice(0, 180) || "fix_failed" };
   }
