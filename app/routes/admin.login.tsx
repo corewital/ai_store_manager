@@ -9,19 +9,33 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return null;
 }
 
-export async function action({ request }: ActionFunctionArgs) {
-  const form = await request.formData();
-  const email = String(form.get("email") || "").trim();
-  const password = String(form.get("password") || "");
-
-  if (!email || !password) {
-    return { error: "Email and password are required" };
+function dbUnavailableMessage(error: unknown): string {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (/TURSO_AUTH_TOKEN|misconfigured|auth token/i.test(msg)) {
+    return "Server database is not configured. Set TURSO_AUTH_TOKEN on Vercel for corepilot-ai-db.";
   }
+  return "Server error — database unavailable. Try again shortly.";
+}
 
-  const result = await loginAdmin(request, email, password);
-  if (!result.ok) return { error: result.error };
+export async function action({ request }: ActionFunctionArgs) {
+  try {
+    const form = await request.formData();
+    const email = String(form.get("email") || "").trim();
+    const password = String(form.get("password") || "");
 
-  throw redirect("/admin", { headers: { "Set-Cookie": result.cookie } });
+    if (!email || !password) {
+      return { error: "Email and password are required" };
+    }
+
+    const result = await loginAdmin(request, email, password);
+    if (!result.ok) return { error: result.error };
+
+    throw redirect("/admin", { headers: { "Set-Cookie": result.cookie } });
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    console.error("[admin.login]", error);
+    return { error: dbUnavailableMessage(error) };
+  }
 }
 
 export default function AdminLogin() {

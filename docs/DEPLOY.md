@@ -21,10 +21,13 @@ even if a preview/branch env var points elsewhere. No new DB is created on deplo
 | `SHOPIFY_API_SECRET` | Partner app secret |
 | `SCOPES` | same as `.env.example` |
 | `TURSO_DATABASE_URL` | `libsql://corepilot-ai-db-vercel-icfg-iurxedhaq7upmnrfjl1nqjpw.aws-us-east-1.turso.io` |
-| `TURSO_AUTH_TOKEN` | Turso token for **corepilot-ai-db** |
+| `TURSO_AUTH_TOKEN` | **Required** — Turso token for master `corepilot-ai-db` (without this, admin login + app return 500) |
 | `DB_PROVIDER` | `turso` |
 | `CRON_SECRET` | long random |
 | `ADMIN_SESSION_SECRET` | long random |
+
+After deploy, verify: `GET https://corepilotai.corewital.com/api/health` → `{"ok":true,"db":"up"}`.
+If `503` / `misconfigured`, add `TURSO_AUTH_TOKEN` on Vercel and redeploy.
 
 If `SHOPIFY_APP_URL` is still an old `*.trycloudflare.com` tunnel, the embedded
 app will fail with “server IP address could not be found”.

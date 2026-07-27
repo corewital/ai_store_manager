@@ -3,6 +3,7 @@ import { createClient } from "@libsql/client";
 import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
 import * as schema from "./schema";
 import { isLiveRuntime, resolveDatabaseUrl } from "./master-db";
+import { getDbConfigError, resolveTursoAuthToken } from "./turso-env";
 
 type Schema = typeof schema;
 
@@ -10,6 +11,9 @@ let _db: LibSQLDatabase<Schema> | undefined;
 
 function getDb() {
   if (_db) return _db;
+
+  const configError = getDbConfigError();
+  if (configError) throw new Error(`[db] ${configError}`);
 
   const url = resolveDatabaseUrl();
 
@@ -19,7 +23,7 @@ function getDb() {
     );
   }
 
-  const authToken = process.env.TURSO_AUTH_TOKEN || undefined;
+  const authToken = resolveTursoAuthToken();
   if (!url.startsWith("file:") && !authToken) {
     throw new Error(
       "[db] TURSO_AUTH_TOKEN is required for live Turso (corepilot-ai-db).",
@@ -37,7 +41,6 @@ function getDb() {
 /**
  * Live (Vercel): always master `corepilot-ai-db` — no branch DBs, no file:.
  * Local: `file:./data/local.db` or TURSO_DATABASE_URL from .env.
- * Schema changes on live: `npm run db:push-live` (ALTER only).
  */
 export const db = new Proxy({} as LibSQLDatabase<Schema>, {
   get(_target, prop, receiver) {
@@ -47,7 +50,25 @@ export const db = new Proxy({} as LibSQLDatabase<Schema>, {
 
 export type Db = LibSQLDatabase<Schema>;
 
-/** Insert one row and return the new autoincrement id (SQLite/Turso). */
+/** Quick connectivity check for health routes / startup diagnostics. */
+export async function pingDatabase(): Promise<{ ok: boolean; error?: string }> {
+  const configError = getDbConfigError();
+  if (configError) return { ok: false, error: configError };
+  try {
+    const url = resolveDatabaseUrl();
+    const authToken = resolveTursoAuthToken();
+    const client = createClient({
+      url,
+      ...(authToken && !url.startsWith("file:") ? { authToken } : {}),
+    });
+    await client.execute("SELECT 1");
+    return { ok: true };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: msg.slice(0, 300) };
+  }
+}
+
 export async function insertReturningId(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   table: any,
