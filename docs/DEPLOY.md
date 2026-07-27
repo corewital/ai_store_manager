@@ -1,68 +1,63 @@
-# Deploy (Vercel Hobby + Turso)
+# Deploy (Vercel Hobby + Turso `corepilot-ai-db`)
 
-## 1. Fix that blocked create
-Hobby plans only allow **once-per-day** crons. `vercel.json` now uses:
+## Critical: live URLs + live DB
+
+| Item | Value |
+|------|--------|
+| App URL | `https://corepilotai.corewital.com` |
+| Turso DB | **only** `corepilot-ai-db` (`libsql://corepilot-ai-db-….turso.io`) |
+| Never on Vercel | `file:./data/local.db` or a new Turso database |
+
+## 1. Vercel env vars (Production)
+
+| Key | Value |
+|---|---|
+| `SHOPIFY_APP_URL` | `https://corepilotai.corewital.com` |
+| `SHOPIFY_API_KEY` | Partner app client id |
+| `SHOPIFY_API_SECRET` | Partner app secret |
+| `SCOPES` | same as `.env.example` |
+| `TURSO_DATABASE_URL` | `libsql://corepilot-ai-db-….turso.io` |
+| `TURSO_AUTH_TOKEN` | Turso token for **corepilot-ai-db** |
+| `DB_PROVIDER` | `turso` |
+| `CRON_SECRET` | long random |
+| `ADMIN_SESSION_SECRET` | long random |
+
+If `SHOPIFY_APP_URL` is still an old `*.trycloudflare.com` tunnel, the embedded
+app will fail with “server IP address could not be found”.
+
+## 2. Shopify config deploy (fix webhooks)
+
+Local `shopify app dev` used to rewrite webhook URLs to a tunnel. Fix:
+
+```bash
+npm run deploy
+# uses shopify.app.toml → application_url = https://corepilotai.corewital.com
+# relative webhook URIs resolve to that host
+```
+
+Then confirm in Partner Dashboard → Versions that webhook URIs are
+`https://corepilotai.corewital.com/webhooks/…` (not trycloudflare).
+
+- Production config: `shopify.app.toml` (`automatically_update_urls_on_dev = false`)
+- Local tunnel: `npm run dev` → `shopify.app.dev.toml`
+
+## 3. Schema on live DB (ALTER only — never recreate)
+
+```bash
+# Point at live DB for this command only, then:
+npm run db:push-live
+```
+
+This runs `drizzle-kit push` against **corepilot-ai-db** only. It will not
+create a new database. Do **not** run `db:fresh` against production.
+
+## 4. Hobby crons
+
 - `0 3 * * *` → `/api/cron/daily-scan`
 - `15 3 * * *` → `/api/cron/process-jobs`
 - `0 4 * * 0` → `/api/cron/weekly-report`
 
-## 2. Vercel project env vars
-In **Project → Settings → Environment Variables** (Production + Preview):
+## 5. Deployment Blocked (Hobby + private repo)
 
-| Key | Value |
-|---|---|
-| `TURSO_DATABASE_URL` | `libsql://corepilot-ai-db-….turso.io` |
-| `TURSO_AUTH_TOKEN` | Turso token |
-| `DB_PROVIDER` | `turso` |
-| `SHOPIFY_API_KEY` | from Partner Dashboard |
-| `SHOPIFY_API_SECRET` | from Partner Dashboard |
-| `SHOPIFY_APP_URL` | `https://corepilot-ai.vercel.app` (or your domain) |
-| `SCOPES` | same as `.env.example` |
-| `CRON_SECRET` | long random string |
-| `ADMIN_SESSION_SECRET` | long random string |
-| `ADMIN_SEED_EMAIL` | your admin email |
-| `ADMIN_SEED_PASSWORD` | strong password (change after first login) |
-| `GEMINI_API_KEY` / AI keys | optional — prefer `/admin/ai` |
-| `RESEND_API_KEY` | optional |
-
-## 3. Database (already done once)
-```bash
-npx drizzle-kit push --force   # schema → Turso
-npm run db:seed                # roles, plans, super admin
-npm run db:migrate-mysql       # copy local MySQL → Turso (optional)
-```
-
-### Local vs production DB — read this
-`drizzle-kit push` targets whatever `TURSO_DATABASE_URL` is set to. If the cloud
-URL is exported in your shell, a later "local" push silently hits **production**
-and your local DB drifts.
-
-- Local dev: `.env` → `TURSO_DATABASE_URL=file:./data/local.db`
-- Production push: pass the cloud URL **inline for that one command only**
-
-If the app throws `Failed query: select … from "shops"` naming a column that
-exists in `app/db/schema.ts`, the local DB drifted. Repair it:
-```bash
-npm run db:repair             # adds missing columns to data/local.db
-npx drizzle-kit push --force  # then confirm "No changes detected"
-```
-
-## 4. Shopify app URL
-After first Vercel deploy succeeds, set Partner Dashboard / `shopify.app.toml` `application_url` to the Vercel URL, then:
-```bash
-npm run deploy
-```
-
-## Hobby: “Deployment Blocked” (commit author)
-
-If Vercel says the commit author lacks contributing access:
-
-**Cause:** Hobby does **not** allow collaborators on **private** repos. Commits from `hp-development` cannot deploy into a **CoreWital** team project.
-
-**Pick one fix (no code change):**
-
-1. **Easiest (free):** GitHub → repo **Settings → Change visibility → Public**, then Redeploy on Vercel.  
-2. **Keep private:** Vercel → upgrade team to **Pro**, add `hp-development` as a member.  
-3. **Same account:** Create/import the project under the **personal** Vercel account that owns the GitHub login used for commits (not a separate team), then reconnect the repo.
-
-Then: **Deployments → … on latest → Redeploy**.
+If Vercel blocks the commit author: make the GitHub repo public, upgrade to Pro,
+or deploy under the personal account that owns the commits.

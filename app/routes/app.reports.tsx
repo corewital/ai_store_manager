@@ -35,7 +35,7 @@ type ReportRow = {
 function parseReport(r: {
   id: number;
   type: string;
-  subject: string;
+  subject: string | null;
   summaryJson: string | null;
   sentAt: Date | null;
 }): ReportRow {
@@ -46,12 +46,13 @@ function parseReport(r: {
     summary = {};
   }
 
+  const subject = r.subject ?? "Store report";
   const summaryText =
     typeof summary.summary === "string"
       ? summary.summary
       : typeof summary.raw === "string"
         ? summary.raw
-        : r.subject;
+        : subject;
 
   const recommendations = Array.isArray(summary.recommendations)
     ? (summary.recommendations as string[])
@@ -81,7 +82,7 @@ function parseReport(r: {
   return {
     id: r.id,
     type: r.type,
-    subject: r.subject,
+    subject,
     summaryText,
     recommendations,
     openIssues,

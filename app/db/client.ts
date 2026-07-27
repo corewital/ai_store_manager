@@ -7,10 +7,25 @@ type Schema = typeof schema;
 
 let _db: LibSQLDatabase<Schema> | undefined;
 
+const LIVE_TURSO_HINT =
+  "libsql://corepilot-ai-db-vercel-icfg-iurxedhaq7upmnrfjl1nqjpw.aws-us-east-1.turso.io";
+
 function resolveUrl() {
-  const url = process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL || "";
+  const url = (process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL || "").trim();
+  const onVercel = Boolean(process.env.VERCEL) || process.env.NODE_ENV === "production";
+
+  // Production / Vercel must use the live Turso DB — never create a local file DB
+  if (onVercel) {
+    if (!url || url.startsWith("file:")) {
+      throw new Error(
+        `Production requires TURSO_DATABASE_URL pointing at corepilot-ai-db (e.g. ${LIVE_TURSO_HINT}). ` +
+          "Do not use file:./data/local.db on Vercel. Set env vars in the Vercel project.",
+      );
+    }
+    return url;
+  }
+
   if (url) return url;
-  // Local offline default (same SQLite dialect as Turso)
   return "file:./data/local.db";
 }
 
@@ -18,6 +33,9 @@ function getDb() {
   if (_db) return _db;
   const url = resolveUrl();
   const authToken = process.env.TURSO_AUTH_TOKEN || undefined;
+  if (!url.startsWith("file:") && !authToken) {
+    console.warn("[db] TURSO_AUTH_TOKEN is empty — cloud Turso may reject connections");
+  }
   const client = createClient({
     url,
     ...(authToken && !url.startsWith("file:") ? { authToken } : {}),
@@ -27,9 +45,9 @@ function getDb() {
 }
 
 /**
- * Production = Turso (TURSO_DATABASE_URL + TURSO_AUTH_TOKEN).
- * Local = file:./data/local.db (or point TURSO_* at your Turso DB).
- * Legacy MySQL is no longer used — Turso/libSQL is the single dialect (Sec 15.7).
+ * Production = live Turso `corepilot-ai-db` only (Vercel env).
+ * Local = file:./data/local.db
+ * Never wipe/recreate the live DB on deploy — use ALTER / drizzle-kit push only.
  */
 export const db = new Proxy({} as LibSQLDatabase<Schema>, {
   get(_target, prop, receiver) {

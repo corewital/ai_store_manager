@@ -5,11 +5,11 @@
 **Spec:** Sec 15.7
 
 ## Do
-- Push `dev`/`main` to GitHub so Vercel picks up latest (settings, plans, favicon)
-- Follow `docs/SHOPIFY_PUBLIC_LISTING.md` for App Store + billing
+- Confirm Vercel env: `SHOPIFY_APP_URL=https://corepilotai.corewital.com` + live `TURSO_*` for **corepilot-ai-db only**
+- Open embedded app and verify it loads (not trycloudflare)
+- Partner version `corepilot-ai-5` released with live webhooks
 
 ## Done this pass
-- Removed Report frequency; timezone auto from Shopify store
-- Modules plan-gated toggles; Reports merchant-friendly UI
-- Cron cadence by plan; plan override survives sync (`planSource=admin`)
-- Favicon + “CorePilot AI Admin” title; public listing docs
+- Production Shopify deploy (`corepilot-ai-5`) — webhooks → corepilotai.corewital.com
+- Split `shopify.app.toml` (prod) / `shopify.app.dev.toml` (local)
+- Guard: Vercel refuses `file:` DB; `npm run db:push-live` ALTER-only for corepilot-ai-db

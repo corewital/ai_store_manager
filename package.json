@@ -4,11 +4,11 @@
   "type": "module",
   "scripts": {
     "build": "remix vite:build",
-    "dev": "shopify app dev",
+    "dev": "shopify app dev --config shopify.app.dev.toml",
     "start": "remix-serve ./build/server/index.js",
     "config:link": "shopify app config link",
     "config:use": "shopify app config use",
-    "deploy": "shopify app deploy",
+    "deploy": "shopify app deploy --config shopify.app.toml",
     "env": "shopify app env",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",
@@ -16,8 +16,9 @@
     "db:migrate": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:seed": "tsx app/db/seeders/index.ts",
-    "db:fresh": "drizzle-kit push --force && npm run db:seed",
+    "db:fresh": "echo Use db:fresh only on LOCAL file DB && drizzle-kit push --force && npm run db:seed",
     "db:repair": "tsx scripts/repair-local-db.ts",
+    "db:push-live": "tsx scripts/push-live-schema.ts",
     "db:migrate-mysql": "tsx scripts/migrate-mysql-to-turso.ts"
   },
   "engines": {

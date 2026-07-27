@@ -1,66 +1,71 @@
-# Publish CorePilot AI on the Shopify App Store (plans & billing)
+# Shopify plans & billing (API) — how upgrades work
 
-Production app URL: `https://corepilotai.corewital.com`
+Production URL: `https://corepilotai.corewital.com`  
+Billing page: Settings → Billing in the embedded app
 
-## 1. Partner Dashboard app
+## How CorePilot creates plans (API — no Partner “plan catalog” required)
 
-1. Go to [Shopify Partners](https://partners.shopify.com) → Apps → **CorePilot AI**.
-2. Set **App URL** = `https://corepilotai.corewital.com`
-3. **Allowed redirection URLs**:
-   - `https://corepilotai.corewital.com/auth/callback`
-   - `https://corepilotai.corewital.com/auth/shopify/callback`
-   - `https://corepilotai.corewital.com/api/auth/callback`
-4. Run locally once with production URLs: `npm run deploy` (`shopify app deploy`).
+Shopify **App Subscription API** creates the charge when the merchant clicks
+**Upgrade**. You do **not** need to pre-create Starter/Pro/Business rows in
+Partner Dashboard for this mode (that’s “Managed Pricing”).
 
-## 2. Billing (Managed Pricing / App Subscriptions)
+Flow:
 
-Shopify charges merchants via **AppSubscription** GraphQL (already used in
-`createSubscription`). For a **public** listing:
+1. Merchant clicks **Upgrade to Starter** (etc.)
+2. App calls GraphQL `appSubscriptionCreate` with price from `app/config/plans.ts`
+3. Shopify returns a **confirmationUrl**
+4. App opens that URL **outside the iframe** (`_top`) so the merchant can approve
+5. Merchant returns to `/app/settings/billing?confirmed=starter`
+6. App activates the plan locally + webhook `app_subscriptions/update` syncs
 
-1. Partners → App → **Distribution** → choose **Public** (App Store).
-2. Under **Pricing**, define recurring plans that match CorePilot:
-   - Free — $0
-   - Starter — $4.99 / month
-   - Professional — $9.99 / month
-   - Business — $19.99 / month
-   - Enterprise — “Contact us” (no self-serve charge; use Admin → Plan override)
-3. Ensure **Embedded app** + required scopes match `shopify.app.toml`.
-4. Test charges with a **development store** first (`test: true` in
-   `appSubscriptionCreate` while `NODE_ENV !== production`).
+Plan prices (source of truth in code / seed):
 
-## 3. Development testing (before public)
+| Plan | Price | Created by |
+|------|-------|------------|
+| Free | $0 | Local only (cancels paid sub) |
+| Starter | $4.99/mo | `appSubscriptionCreate` |
+| Professional | $9.99/mo | `appSubscriptionCreate` |
+| Business | $19.99/mo | `appSubscriptionCreate` |
+| Enterprise | Contact | Admin override / support |
 
-| Step | Action |
-|------|--------|
-| A | Install app on a dev store from Partner Dashboard |
-| B | In Admin Core → Installs → store → **Plan override** → Starter/Pro/Business |
-| C | Open embedded app → Settings → Billing — usage/limits should match |
-| D | Queue Scan — Free allows 3 manual scans; higher plans unlock cadence |
-| E | For real Shopify money flow, click **Upgrade** on Billing (opens Shopify confirm) |
+## Steps to test Upgrade on a development store
 
-Admin **Plan override** updates the app immediately and is **not wiped** by
-Shopify sync (`planSource=admin`). Merchant self-serve upgrades still create a
-real Shopify subscription (`planSource=shopify`).
+1. Install the app on a **development store** (Partner Dashboard → Stores).
+2. Open **Apps → CorePilot AI → Settings → Billing**.
+3. Click **Upgrade to Starter** (or Pro / Business).
+4. You should leave the iframe and see Shopify’s **Approve charge** page  
+   (test charge — no real money in `NODE_ENV=development`).
+5. Click **Approve**.
+6. You return to Billing with “Subscription confirmed” and the new plan badge.
 
-## 4. Enterprise / custom deals
+### If Upgrade does nothing / errors
 
-1. Agree price offline.
-2. Admin → Installs → store → Plan override → **Enterprise**.
-3. Optionally create a custom AppSubscription in Partner Dashboard / Billing API
-   with a one-off price, or invoice outside Shopify.
-4. Limits: set Unlimited on Admin → Billing plans → Enterprise features.
+| Symptom | Fix |
+|---------|-----|
+| Click does nothing | Hard-refresh the app; use the “click here to approve” link in the banner |
+| `confirmationUrl` missing | Ensure store is a **dev store** for test charges; app must be installed |
+| Return URL wrong | App uses the **current request origin** (live tunnel), not a stale `.env` tunnel |
+| Still on Free after approve | Check webhook `app_subscriptions/update` in `shopify.app.toml`; reopen Billing |
+| Need plan without paying (QA) | Admin Core → Installs → store → **Plan override** |
 
-## 5. App Store listing checklist
+## Partner Dashboard — required for Upgrade (Billing API)
 
-- [ ] Privacy policy + GDPR webhooks live
-- [ ] Screenshots / demo video
-- [ ] Support email / in-app Support tickets
-- [ ] Vercel env: `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`,
-      `TURSO_*`, `CRON_SECRET`, `ADMIN_SESSION_SECRET`
-- [ ] Submit for review under Distribution → App Store
+Shopify returns errors like *“Apps without a public distribution cannot use the
+Billing API”* until you do this once:
 
-## 6. Cron note (Hobby)
+1. Open [partners.shopify.com](https://partners.shopify.com) → Apps → **CorePilot AI**
+2. Left menu → **Distribution**
+3. Choose **Public distribution** → Select  
+   (You do **not** need to submit to the App Store yet.)
+4. Retry **Upgrade** in the app (dev stores use `test: true` charges)
 
-Vercel Hobby runs crons **once per day**. Merchant “Queue Scan” processes
-immediately. Scheduled cadence (monthly / weekly / daily) is evaluated inside
-`/api/cron/daily-scan` using each shop’s plan `scan_cadence`.
+Until Distribution is Public, Upgrade will fail. Use **Admin → Plan override**
+for QA without Shopify billing.
+
+## Admin override (no Shopify charge)
+
+For demos / Enterprise:
+
+**Admin** → Installs → store → Plan override → choose plan → Update plan  
+
+This sets `planSource=admin` so sync will not wipe it.

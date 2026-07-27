@@ -1,5 +1,4 @@
 ﻿import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { redirect } from "@remix-run/node";
 import { useLoaderData, useFetcher, useSearchParams } from "@remix-run/react";
 import {
   Page,
@@ -15,9 +14,11 @@ import {
   Layout,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
+import { useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import { PLANS, formatPrice, type PlanSlug } from "../config/plans";
 import {
+  activateConfirmedPlan,
   createSubscription,
   syncSubscription,
 } from "../services/shopify/billing.server";
@@ -31,6 +32,14 @@ import {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop, session.accessToken);
+
+  const url = new URL(request.url);
+  const confirmed = url.searchParams.get("confirmed");
+  if (confirmed && confirmed in PLANS && confirmed !== "enterprise") {
+    // Merchant returned from Shopify charge approval
+    await activateConfirmedPlan(shop.id, confirmed as PlanSlug);
+  }
+
   const plan = await syncSubscription(admin, shop.id);
   const usage = await getPlanUsage(shop.id);
   const [productLimit, aiLimit, scanLimit] = await Promise.all([
@@ -43,6 +52,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     shopDomain: session.shop,
     usage,
     limits: { productLimit, aiLimit, scanLimit },
+    billingTest: process.env.NODE_ENV !== "production",
   };
 };
 
@@ -51,12 +61,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const shop = await ensureShop(session.shop, session.accessToken);
 
   const plan = String((await request.formData()).get("plan") ?? "");
-  if (!(plan in PLANS)) return { ok: false, error: "invalid_plan" };
+  if (!(plan in PLANS)) return { ok: false as const, error: "invalid_plan" };
   if (plan === "enterprise") {
-    return { ok: false, error: "Contact support for Enterprise." };
+    return { ok: false as const, error: "Contact support for Enterprise." };
   }
 
-  const appUrl = process.env.SHOPIFY_APP_URL || new URL(request.url).origin;
+  // Prefer the live request origin (current tunnel / domain) — not a stale .env tunnel
+  const appUrl =
+    new URL(request.url).origin ||
+    process.env.SHOPIFY_APP_URL ||
+    "https://corepilotai.corewital.com";
+
   const result = await createSubscription(
     admin,
     shop.id,
@@ -64,19 +79,33 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     appUrl,
   );
 
-  if (!result.ok) return { ok: false, error: result.error };
-  if (result.confirmationUrl) return redirect(result.confirmationUrl);
-  return { ok: true, plan: result.plan };
+  if (!result.ok) return { ok: false as const, error: result.error };
+  // Return URL to client — fetcher cannot navigate top-level to Shopify approve page
+  return {
+    ok: true as const,
+    plan: result.plan,
+    confirmationUrl: result.confirmationUrl,
+  };
 };
 
 export default function SettingsBillingPage() {
-  const { plan: currentPlan, shopDomain, usage, limits } =
+  const { plan: currentPlan, shopDomain, usage, limits, billingTest } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const [params] = useSearchParams();
   const confirmed = params.get("confirmed");
   const need = params.get("need");
   const activePlan = (currentPlan in PLANS ? currentPlan : "free") as PlanSlug;
+
+  // Open Shopify charge approval outside the embedded iframe
+  useEffect(() => {
+    const url = fetcher.data && "confirmationUrl" in fetcher.data
+      ? fetcher.data.confirmationUrl
+      : null;
+    if (fetcher.data?.ok && url) {
+      window.open(url, "_top");
+    }
+  }, [fetcher.data]);
 
   return (
     <Page>
@@ -90,12 +119,37 @@ export default function SettingsBillingPage() {
         )}
         {confirmed && (
           <Banner tone="success">
-            Subscription confirmed. You are on the {PLANS[activePlan].name} plan.
+            Subscription confirmed. You are on the{" "}
+            {PLANS[activePlan]?.name ?? confirmed} plan.
           </Banner>
         )}
         {fetcher.data && !fetcher.data.ok && (
           <Banner tone="critical">
-            {(fetcher.data as { error?: string }).error}
+            <p>
+              <strong>Upgrade failed</strong>
+            </p>
+            <p>{(fetcher.data as { error?: string }).error}</p>
+            <p>
+              Quick fix: Partners → CorePilot AI → <strong>Distribution</strong>{" "}
+              → select <strong>Public distribution</strong> (no App Store submit
+              needed). Then retry Upgrade. For demos, use Admin → Installs →
+              Plan override.
+            </p>
+          </Banner>
+        )}
+        {fetcher.data?.ok && fetcher.data.confirmationUrl && (
+          <Banner tone="info">
+            Opening Shopify to approve the charge… If nothing opens,{" "}
+            <a href={fetcher.data.confirmationUrl} target="_top" rel="noreferrer">
+              click here to approve
+            </a>
+            .
+          </Banner>
+        )}
+        {billingTest && (
+          <Banner tone="info">
+            Dev mode: upgrades create a <strong>test</strong> charge (no real
+            money). Approve it on the Shopify charge page to activate the plan.
           </Banner>
         )}
 

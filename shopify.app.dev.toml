@@ -1,7 +1,6 @@
-# Learn more: https://shopify.dev/docs/apps/tools/cli/configuration
-# PRODUCTION config — deploy with: npm run deploy
-# Do not run `shopify app dev` against this file if it would rewrite live URLs.
-# For local tunnel work use: shopify.app.dev.toml (`npm run dev`)
+# Local development config (Cloudflare tunnel / shopify app dev)
+# Usage: npm run dev  (uses this file via --config)
+# Never deploy this file to production.
 
 name = "CorePilot AI"
 client_id = "a4ba88c8d3f3c2c642fb0791258c1142"
@@ -9,8 +8,8 @@ application_url = "https://corepilotai.corewital.com"
 embedded = true
 
 [build]
-# Keep false so local `shopify app dev` cannot overwrite production webhooks/URLs.
-automatically_update_urls_on_dev = false
+automatically_update_urls_on_dev = true
+dev_store_url = "corewitalapp.myshopify.com"
 
 [access_scopes]
 scopes = "read_products,write_products,read_inventory,write_inventory,read_orders,read_customers,read_content,write_content,read_themes,write_themes,read_online_store_navigation,write_files"

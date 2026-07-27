@@ -4,7 +4,7 @@ import { authenticate } from "../shopify.server";
 import { db } from "../db/client";
 import { shops } from "../db/schema";
 import { logWebhook } from "../services/shopify/webhook-log.server";
-import { upsertSubscription } from "../services/shopify/billing.server";
+import { upsertSubscription, planFromSubscriptionName } from "../services/shopify/billing.server";
 import { PLANS, type PlanSlug } from "../config/plans";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -18,10 +18,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
 
     if (row && sub) {
-      const name = String(sub.name ?? "").toLowerCase();
+      const name = String(sub.name ?? "");
       const plan =
-        (Object.keys(PLANS) as PlanSlug[]).find((k) => name.includes(k)) ??
-        "free";
+        planFromSubscriptionName(name) ??
+        ((Object.keys(PLANS) as PlanSlug[]).find((k) =>
+          name.toLowerCase().includes(k),
+        ) ?? "free");
       const status = String(sub.status ?? "").toLowerCase();
 
       await upsertSubscription({
@@ -29,6 +31,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         plan: status === "active" ? plan : "free",
         status,
         shopifySubscriptionId: (sub.admin_graphql_api_id as string) ?? null,
+        planSource: "shopify",
       });
     }
 

@@ -55,8 +55,20 @@ async function syncInstallRecord(shop: typeof shops.$inferSelect) {
 }
 
 function appApiUrlFromEnv() {
-  const raw = process.env.SHOPIFY_APP_URL || process.env.HOST || "";
-  return raw.replace(/\/$/, "") || null;
+  const raw = (process.env.SHOPIFY_APP_URL || process.env.HOST || "").trim();
+  const onVercel = Boolean(process.env.VERCEL);
+  const production = "https://corepilotai.corewital.com";
+  if (onVercel) {
+    if (!raw || raw.includes("trycloudflare.com") || raw.includes("localhost")) {
+      return production;
+    }
+    return raw.replace(/\/$/, "");
+  }
+  if (!raw || raw.includes("trycloudflare.com")) {
+    // Prefer live URL when storing appApiUrl unless a real tunnel is active via shopify app dev
+    return production;
+  }
+  return raw.replace(/\/$/, "") || production;
 }
 
 export async function ensureShop(
