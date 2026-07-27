@@ -51,13 +51,25 @@ npm run db:push-live
 This runs `drizzle-kit push` against **corepilot-ai-db** only. It will not
 create a new database. Do **not** run `db:fresh` against production.
 
-## 4. Hobby crons
+After deploy, also ensure `sessions.refresh_token` / `refresh_token_expires`
+columns exist (public apps need **expiring offline tokens** — without them
+Shopify returns `GraphQL Client: Forbidden` / HTTP 403 on Admin API).
+
+## 4. After deploy: refresh the store session
+
+1. Open the store Admin → Apps → **CorePilot AI** (full reopen, not a stale tab).
+2. That triggers token exchange with `expiring=1` and stores a refresh token.
+3. Then retry **AI Fix**.
+
+If AI Fix still shows Forbidden: uninstall + reinstall the app once on that store.
+
+## 5. Hobby crons
 
 - `0 3 * * *` → `/api/cron/daily-scan`
 - `15 3 * * *` → `/api/cron/process-jobs`
 - `0 4 * * 0` → `/api/cron/weekly-report`
 
-## 5. Deployment Blocked (Hobby + private repo)
+## 6. Deployment Blocked (Hobby + private repo)
 
 If Vercel blocks the commit author: make the GitHub repo public, upgrade to Pro,
 or deploy under the personal account that owns the commits.

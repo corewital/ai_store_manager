@@ -22,6 +22,16 @@ async function main() {
       column: "manual_scan_count",
       ddl: "ALTER TABLE app_settings ADD COLUMN manual_scan_count integer NOT NULL DEFAULT 0",
     },
+    {
+      table: "sessions",
+      column: "refresh_token",
+      ddl: "ALTER TABLE sessions ADD COLUMN refresh_token text",
+    },
+    {
+      table: "sessions",
+      column: "refresh_token_expires",
+      ddl: "ALTER TABLE sessions ADD COLUMN refresh_token_expires integer",
+    },
   ];
 
   for (const n of needed) {

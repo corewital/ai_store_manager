@@ -8,6 +8,7 @@ import {
   navigationIssues,
   productIssues,
   seoIssues,
+  shops,
   themeIssues,
 } from "../../db/schema";
 import {
@@ -22,11 +23,13 @@ import { uploadOptimizedProductImage } from "../images/upload-optimized.server";
 import { enqueueFix, markFixDone } from "./fix-queue.server";
 import {
   formatCaughtErrorAsync,
+  isShopifyForbiddenError,
   shouldRethrowResponse,
 } from "../../lib/errors.server";
 import { assertCanAiFix } from "./plan-gate.server";
 import { getShopPlan } from "./billing.server";
 import { hasAnyAiKey } from "../ai/ai-router.server";
+import { invalidateShopSessions } from "./turso-session-storage.server";
 
 type IssueTable =
   | typeof productIssues
@@ -83,6 +86,19 @@ async function assertNoUserErrors(
   const block = json.data?.[field];
   const errs = block?.userErrors || block?.mediaUserErrors || [];
   if (errs.length) throw new Error(errs.map((e) => e.message).join("; "));
+}
+
+async function wipeSessionsIfForbidden(shopId: number, error: unknown) {
+  const forbidden =
+    isShopifyForbiddenError(error) ||
+    (error instanceof Response && error.status === 403);
+  if (!forbidden) return;
+  const shop = await db.query.shops.findFirst({
+    where: eq(shops.id, shopId),
+  });
+  if (shop?.shopDomain) {
+    await invalidateShopSessions(shop.shopDomain).catch(() => undefined);
+  }
 }
 
 /** Merchant-supplied value instead of an AI-generated one. */
@@ -186,6 +202,7 @@ export async function applyManualFix(
     return { ok: true };
   } catch (error) {
     if (shouldRethrowResponse(error)) throw error;
+    await wipeSessionsIfForbidden(shopId, error);
     const msg = await formatCaughtErrorAsync(error);
     await markFixDone(job.id, msg);
     return { ok: false, error: msg.slice(0, 180) || "fix_failed" };
@@ -419,6 +436,7 @@ export async function runModuleFix(
     return { ok: true };
   } catch (error) {
     if (shouldRethrowResponse(error)) throw error;
+    await wipeSessionsIfForbidden(shopId, error);
     const msg = await formatCaughtErrorAsync(error);
     await markFixDone(job.id, msg);
     return { ok: false, error: msg.slice(0, 180) || "fix_failed" };

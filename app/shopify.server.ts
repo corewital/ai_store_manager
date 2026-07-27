@@ -39,6 +39,8 @@ const shopify = shopifyApp({
   },
   future: {
     unstable_newEmbeddedAuthStrategy: true,
+    // Required for public apps (403 Forbidden without this after Apr 2026)
+    expiringOfflineAccessTokens: true,
   },
 });
 

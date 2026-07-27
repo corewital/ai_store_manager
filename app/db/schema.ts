@@ -58,6 +58,10 @@ export const sessions = sqliteTable(
     scope: text("scope"),
     expires: integer("expires", { mode: "timestamp_ms" }),
     accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    refreshTokenExpires: integer("refresh_token_expires", {
+      mode: "timestamp_ms",
+    }),
     userId: text("user_id"),
     firstName: text("first_name"),
     lastName: text("last_name"),

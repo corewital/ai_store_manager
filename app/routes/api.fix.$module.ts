@@ -16,16 +16,22 @@ import {
 } from "../services/shopify/shop-jobs.server";
 import {
   formatCaughtErrorAsync,
+  isShopifyForbiddenError,
   shouldRethrowResponse,
 } from "../lib/errors.server";
+import { invalidateShopSessions } from "../services/shopify/turso-session-storage.server";
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   if (request.method !== "POST") {
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
 
+  let shopDomain: string | null = null;
+
   try {
     const { session, admin } = await authenticate.admin(request);
+    shopDomain = session.shop;
+
     const limited = rateLimit(`fix:${session.shop}`, 60, 60_000);
     if (!limited.ok) {
       return json({ ok: false, error: "rate_limited" }, { status: 429 });
@@ -123,6 +129,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
   } catch (error) {
     if (shouldRethrowResponse(error)) throw error;
+
+    const forbidden =
+      isShopifyForbiddenError(error) ||
+      (error instanceof Response && error.status === 403);
+
+    if (forbidden && shopDomain) {
+      await invalidateShopSessions(shopDomain).catch(() => undefined);
+    }
+
     const msg = await formatCaughtErrorAsync(error);
     return json({ ok: false, error: msg }, { status: 422 });
   }

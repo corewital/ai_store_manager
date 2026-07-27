@@ -5,6 +5,22 @@ import { db } from "../../db/client";
 import { sessions } from "../../db/schema";
 import { ensureShop } from "./shops.server";
 
+/** shopify-api Session fields for expiring offline tokens (API 13+). */
+type SessionWithRefresh = Session & {
+  refreshToken?: string | null;
+  refreshTokenExpires?: Date | null;
+};
+
+/**
+ * Public apps (App Store distribution) must use expiring offline tokens.
+ * Non-expiring tokens get GraphQL 403 "Forbidden" from Shopify.
+ */
+function isStaleNonExpiringOffline(
+  row: typeof sessions.$inferSelect,
+): boolean {
+  return !row.isOnline && Boolean(row.accessToken) && !row.refreshToken;
+}
+
 function rowToSession(row: typeof sessions.$inferSelect): Session {
   return new Session({
     id: row.id,
@@ -14,6 +30,8 @@ function rowToSession(row: typeof sessions.$inferSelect): Session {
     scope: row.scope ?? undefined,
     expires: row.expires ?? undefined,
     accessToken: row.accessToken ?? undefined,
+    refreshToken: row.refreshToken ?? undefined,
+    refreshTokenExpires: row.refreshTokenExpires ?? undefined,
     onlineAccessInfo: row.userId
       ? ({
           expires_in: 0,
@@ -30,10 +48,11 @@ function rowToSession(row: typeof sessions.$inferSelect): Session {
           },
         } as Session["onlineAccessInfo"])
       : undefined,
-  });
+  } as ConstructorParameters<typeof Session>[0]);
 }
 
 function sessionToValues(session: Session) {
+  const s = session as SessionWithRefresh;
   const user = session.onlineAccessInfo?.associated_user;
   return {
     id: session.id,
@@ -43,6 +62,8 @@ function sessionToValues(session: Session) {
     scope: session.scope ?? null,
     expires: session.expires ?? null,
     accessToken: session.accessToken ?? null,
+    refreshToken: s.refreshToken ?? null,
+    refreshTokenExpires: s.refreshTokenExpires ?? null,
     userId: user?.id != null ? String(user.id) : null,
     firstName: user?.first_name ?? null,
     lastName: user?.last_name ?? null,
@@ -79,7 +100,13 @@ export class TursoSessionStorage implements SessionStorage {
     const row = await db.query.sessions.findFirst({
       where: eq(sessions.id, id),
     });
-    return row ? rowToSession(row) : undefined;
+    if (!row) return undefined;
+    if (isStaleNonExpiringOffline(row)) {
+      // Force token exchange with expiring=1 on next authenticate.admin
+      await db.delete(sessions).where(eq(sessions.id, id));
+      return undefined;
+    }
+    return rowToSession(row);
   }
 
   async deleteSession(id: string): Promise<boolean> {
@@ -97,6 +124,15 @@ export class TursoSessionStorage implements SessionStorage {
     const rows = await db.query.sessions.findMany({
       where: eq(sessions.shop, shop),
     });
-    return rows.map(rowToSession);
+    const staleIds = rows.filter(isStaleNonExpiringOffline).map((r) => r.id);
+    if (staleIds.length > 0) {
+      await db.delete(sessions).where(inArray(sessions.id, staleIds));
+    }
+    return rows.filter((r) => !isStaleNonExpiringOffline(r)).map(rowToSession);
   }
+}
+
+/** Drop all Shopify sessions for a shop so the next app open re-auths. */
+export async function invalidateShopSessions(shopDomain: string) {
+  await db.delete(sessions).where(eq(sessions.shop, shopDomain));
 }

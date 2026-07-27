@@ -1,9 +1,15 @@
 /** Turn unknown thrown values into a short merchant-facing string. */
 export function formatCaughtError(error: unknown): string {
+  const shopifyForbidden = shopifyForbiddenMessage(error);
+  if (shopifyForbidden) return shopifyForbidden;
+
   if (error instanceof Error) {
     return (error.message || error.name || "Error").slice(0, 500);
   }
   if (typeof Response !== "undefined" && error instanceof Response) {
+    if (error.status === 403) {
+      return SHOPIFY_403_HINT;
+    }
     return `HTTP ${error.status}${error.statusText ? ` ${error.statusText}` : ""}`;
   }
   if (error && typeof error === "object") {
@@ -11,13 +17,26 @@ export function formatCaughtError(error: unknown): string {
       status?: number;
       statusText?: string;
       message?: string;
+      networkStatusCode?: number;
+      response?: { code?: number };
     };
+    if (
+      r.networkStatusCode === 403 ||
+      r.response?.code === 403 ||
+      r.status === 403 ||
+      /forbidden/i.test(String(r.message || ""))
+    ) {
+      return SHOPIFY_403_HINT;
+    }
     if (typeof r.status === "number") {
       return `HTTP ${r.status}${r.statusText ? ` ${r.statusText}` : ""}`;
     }
     if (typeof r.message === "string" && r.message) return r.message.slice(0, 500);
   }
-  if (typeof error === "string") return error.slice(0, 500);
+  if (typeof error === "string") {
+    if (/forbidden/i.test(error)) return SHOPIFY_403_HINT;
+    return error.slice(0, 500);
+  }
   try {
     const s = JSON.stringify(error);
     if (s && s !== "{}") return s.slice(0, 500);
@@ -27,9 +46,33 @@ export function formatCaughtError(error: unknown): string {
   return "Unknown error";
 }
 
+export const SHOPIFY_403_HINT =
+  "Shopify blocked this action (session needs refresh). Close this app tab, reopen CorePilot AI from Shopify Admin, then try AI Fix again.";
+
+function shopifyForbiddenMessage(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const e = error as {
+    message?: string;
+    networkStatusCode?: number;
+    response?: { code?: number; status?: number };
+    status?: number;
+  };
+  const code =
+    e.networkStatusCode ?? e.response?.code ?? e.response?.status ?? e.status;
+  const msg = String(e.message || "");
+  if (code === 403 || /GraphQL Client:\s*Forbidden/i.test(msg) || /^Forbidden$/i.test(msg)) {
+    return SHOPIFY_403_HINT;
+  }
+  return null;
+}
+
 /** Prefer body text when a Response was thrown (Shopify auth / GraphQL). */
 export async function formatCaughtErrorAsync(error: unknown): Promise<string> {
+  const shopifyForbidden = shopifyForbiddenMessage(error);
+  if (shopifyForbidden) return shopifyForbidden;
+
   if (typeof Response !== "undefined" && error instanceof Response) {
+    if (error.status === 403) return SHOPIFY_403_HINT;
     let detail = "";
     try {
       const text = (await error.clone().text()).trim();
@@ -38,12 +81,18 @@ export async function formatCaughtErrorAsync(error: unknown): Promise<string> {
           const parsed = JSON.parse(text) as {
             error?: string;
             message?: string;
-            errors?: Array<{ message?: string }>;
+            errors?: Array<{ message?: string }> | { message?: string };
           };
+          if (typeof parsed.errors === "object" && !Array.isArray(parsed.errors)) {
+            const nested = parsed.errors as { message?: string };
+            if (/forbidden/i.test(String(nested.message || ""))) {
+              return SHOPIFY_403_HINT;
+            }
+          }
           detail =
             parsed.error ||
             parsed.message ||
-            parsed.errors?.[0]?.message ||
+            (Array.isArray(parsed.errors) ? parsed.errors[0]?.message : undefined) ||
             text;
         } catch {
           detail = text;
@@ -52,6 +101,7 @@ export async function formatCaughtErrorAsync(error: unknown): Promise<string> {
     } catch {
       /* ignore body read */
     }
+    if (/forbidden/i.test(detail)) return SHOPIFY_403_HINT;
     const base = `HTTP ${error.status}${error.statusText ? ` ${error.statusText}` : ""}`;
     const msg = detail ? `${base}: ${detail}` : base;
     return msg.slice(0, 500);
@@ -65,13 +115,13 @@ export function isThrownResponse(error: unknown): error is Response {
 }
 
 /**
- * Auth/reauth Responses must bubble to Remix.
- * Other Responses (e.g. throw json()) become messages.
+ * Auth/reauth Responses must bubble to Remix (401 / redirects).
+ * Do NOT rethrow bare 403 from GraphQL — that surfaces as "[object Response]"
+ * or empty Forbidden; we convert those into merchant-facing JSON instead.
  */
 export function shouldRethrowResponse(error: unknown): error is Response {
   if (!isThrownResponse(error)) return false;
-  // Shopify session refresh / install redirects
-  if (error.status === 302 || error.status === 401 || error.status === 403) {
+  if (error.status === 302 || error.status === 401) {
     return true;
   }
   const loc = error.headers?.get?.("Location") ?? "";
@@ -79,4 +129,8 @@ export function shouldRethrowResponse(error: unknown): error is Response {
     return true;
   }
   return false;
+}
+
+export function isShopifyForbiddenError(error: unknown): boolean {
+  return shopifyForbiddenMessage(error) != null;
 }
