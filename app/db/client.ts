@@ -2,40 +2,30 @@ import "dotenv/config";
 import { createClient } from "@libsql/client";
 import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
 import * as schema from "./schema";
+import { isLiveRuntime, resolveDatabaseUrl } from "./master-db";
 
 type Schema = typeof schema;
 
 let _db: LibSQLDatabase<Schema> | undefined;
 
-const LIVE_TURSO_HINT =
-  "libsql://corepilot-ai-db-vercel-icfg-iurxedhaq7upmnrfjl1nqjpw.aws-us-east-1.turso.io";
-
-function resolveUrl() {
-  const url = (process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL || "").trim();
-  const onVercel = Boolean(process.env.VERCEL) || process.env.NODE_ENV === "production";
-
-  // Production / Vercel must use the live Turso DB — never create a local file DB
-  if (onVercel) {
-    if (!url || url.startsWith("file:")) {
-      throw new Error(
-        `Production requires TURSO_DATABASE_URL pointing at corepilot-ai-db (e.g. ${LIVE_TURSO_HINT}). ` +
-          "Do not use file:./data/local.db on Vercel. Set env vars in the Vercel project.",
-      );
-    }
-    return url;
-  }
-
-  if (url) return url;
-  return "file:./data/local.db";
-}
-
 function getDb() {
   if (_db) return _db;
-  const url = resolveUrl();
+
+  const url = resolveDatabaseUrl();
+
+  if (isLiveRuntime() && url.startsWith("file:")) {
+    throw new Error(
+      "Production must not use file: DB. Live always uses master corepilot-ai-db Turso.",
+    );
+  }
+
   const authToken = process.env.TURSO_AUTH_TOKEN || undefined;
   if (!url.startsWith("file:") && !authToken) {
-    console.warn("[db] TURSO_AUTH_TOKEN is empty — cloud Turso may reject connections");
+    throw new Error(
+      "[db] TURSO_AUTH_TOKEN is required for live Turso (corepilot-ai-db).",
+    );
   }
+
   const client = createClient({
     url,
     ...(authToken && !url.startsWith("file:") ? { authToken } : {}),
@@ -45,9 +35,9 @@ function getDb() {
 }
 
 /**
- * Production = live Turso `corepilot-ai-db` only (Vercel env).
- * Local = file:./data/local.db
- * Never wipe/recreate the live DB on deploy — use ALTER / drizzle-kit push only.
+ * Live (Vercel): always master `corepilot-ai-db` — no branch DBs, no file:.
+ * Local: `file:./data/local.db` or TURSO_DATABASE_URL from .env.
+ * Schema changes on live: `npm run db:push-live` (ALTER only).
  */
 export const db = new Proxy({} as LibSQLDatabase<Schema>, {
   get(_target, prop, receiver) {

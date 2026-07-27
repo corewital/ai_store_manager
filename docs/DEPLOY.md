@@ -5,8 +5,12 @@
 | Item | Value |
 |------|--------|
 | App URL | `https://corepilotai.corewital.com` |
-| Turso DB | **only** `corepilot-ai-db` (`libsql://corepilot-ai-db-….turso.io`) |
-| Never on Vercel | `file:./data/local.db` or a new Turso database |
+| Turso DB | **only** master `corepilot-ai-db` — see `app/db/master-db.ts` |
+| Never on Vercel | `file:./data/local.db`, branch DBs, or a new Turso database |
+
+**Backend rule:** On Vercel, `app/db/client.ts` **always** connects to the master URL
+(`libsql://corepilot-ai-db-vercel-icfg-iurxedhaq7upmnrfjl1nqjpw.aws-us-east-1.turso.io`)
+even if a preview/branch env var points elsewhere. No new DB is created on deploy.
 
 ## 1. Vercel env vars (Production)
 
@@ -16,7 +20,7 @@
 | `SHOPIFY_API_KEY` | Partner app client id |
 | `SHOPIFY_API_SECRET` | Partner app secret |
 | `SCOPES` | same as `.env.example` |
-| `TURSO_DATABASE_URL` | `libsql://corepilot-ai-db-….turso.io` |
+| `TURSO_DATABASE_URL` | `libsql://corepilot-ai-db-vercel-icfg-iurxedhaq7upmnrfjl1nqjpw.aws-us-east-1.turso.io` |
 | `TURSO_AUTH_TOKEN` | Turso token for **corepilot-ai-db** |
 | `DB_PROVIDER` | `turso` |
 | `CRON_SECRET` | long random |
