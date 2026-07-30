@@ -69,3 +69,10 @@ For demos / Enterprise:
 **Admin** → Installs → store → Plan override → choose plan → Update plan  
 
 This sets `planSource=admin` so sync will not wipe it.
+
+## App Store listing links
+
+| Field | URL |
+|-------|-----|
+| App / homepage | `https://corepilotai.corewital.com` |
+| Privacy policy | `https://corepilotai.corewital.com/privacy` |

@@ -165,14 +165,7 @@ export function AdminSidebar({ user }: Props) {
   const visibleGroups = GROUPS.filter((g) => !g.roles || g.roles.includes(role));
 
   return (
-    <aside className="admin-sidebar">
-      <div className="admin-sidebar__brand">
-        <img
-          src="/images/Sidebar_Icon_Only.png"
-          alt=""
-          className="admin-sidebar__brand-icon"
-        />
-      </div>
+    <aside className="admin-sidebar"> 
       <div className="admin-sidebar__tools">
         <button type="button" onClick={() => setAll(true)}>
           Expand all
