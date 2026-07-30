@@ -26,32 +26,32 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 const FEATURES = [
   {
-    icon: "🩺",
+    icon: "/images/Dashboard.png",
     title: "Store health score",
     text: "One dashboard grading products, SEO, images, inventory, and collections.",
   },
   {
-    icon: "🤖",
+    icon: "/images/AI_Assistant.png",
     title: "AI one-click fixes",
     text: "Generate descriptions, SEO, and alt text — apply single fixes instantly or in bulk.",
   },
   {
-    icon: "🔁",
+    icon: "/images/Reports.png",
     title: "Automatic scans",
     text: "Background cron scans your catalog daily and queues fixes without slowing your store.",
   },
   {
-    icon: "🖼️",
+    icon: "/images/Images.png",
     title: "Image optimization",
     text: "Compress oversized images and add missing media to speed up page loads.",
   },
   {
-    icon: "🔌",
+    icon: "/images/Settings.png",
     title: "Multi-AI providers",
     text: "OpenAI, Gemini, Claude, OpenRouter and more with automatic key rotation and failover.",
   },
   {
-    icon: "📈",
+    icon: "/images/Performance.png",
     title: "Reports & alerts",
     text: "Scheduled email summaries so you always know what changed and what needs attention.",
   },
@@ -70,8 +70,11 @@ export default function Index() {
     <div className={styles.page}>
       <header className={styles.nav}>
         <div className={styles.brand}>
-          <span className={styles.brandMark}>CP</span>
-          <span>CorePilot&nbsp;AI</span>
+          <img
+            src="/images/Main_Brand_Logo_Horizontal.png"
+            alt="CorePilot AI"
+            className={styles.brandLogo}
+          />
         </div>
         <nav className={styles.navLinks}>
           <a href="#features">Features</a>
@@ -119,6 +122,11 @@ export default function Index() {
         </div>
 
         <div className={styles.heroCard} aria-hidden="true">
+          <img
+            src="/images/Website_Hero_Logo.png"
+            alt=""
+            className={styles.heroLogo}
+          />
           <div className={styles.scoreRing}>
             <span className={styles.scoreValue}>92</span>
             <span className={styles.scoreLabel}>Store health</span>
@@ -151,7 +159,7 @@ export default function Index() {
         <div className={styles.grid}>
           {FEATURES.map((f) => (
             <div key={f.title} className={styles.feature}>
-              <div className={styles.featureIcon}>{f.icon}</div>
+              <img src={f.icon} alt="" className={styles.featureIcon} />
               <h3>{f.title}</h3>
               <p>{f.text}</p>
             </div>

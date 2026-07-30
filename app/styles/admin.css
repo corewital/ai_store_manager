@@ -50,6 +50,14 @@
   flex-shrink: 0;
 }
 
+.admin-header__brand-logo {
+  display: block;
+  height: 36px;
+  width: auto;
+  max-width: 220px;
+  object-fit: contain;
+}
+
 .admin-header__brand-mark {
   width: 28px;
   height: 28px;
@@ -163,6 +171,18 @@
   color: #cbd5e1;
   padding: 1rem 0 1.5rem;
   border-right: 1px solid #1e293b;
+}
+
+.admin-sidebar__brand {
+  display: flex;
+  justify-content: center;
+  padding: 0.25rem 1rem 0.85rem;
+}
+
+.admin-sidebar__brand-icon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
 }
 
 .admin-sidebar__group {
@@ -495,6 +515,15 @@
   background:
     radial-gradient(800px 400px at 20% 0%, rgba(15, 118, 110, 0.18), transparent 55%),
     linear-gradient(180deg, #0b1220 0%, #111827 100%);
+}
+
+.admin-auth__logo {
+  display: block;
+  height: 48px;
+  width: auto;
+  max-width: 260px;
+  margin: 0 auto 1rem;
+  object-fit: contain;
 }
 
 .admin-auth__card {

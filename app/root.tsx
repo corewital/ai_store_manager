@@ -13,7 +13,7 @@ export const meta: MetaFunction = () => [
 ];
 
 export const links: LinksFunction = () => [
-  { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+  { rel: "icon", href: "/images/App_Favicon.png", type: "image/png" },
 ];
 
 export default function App() {

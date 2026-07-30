@@ -171,7 +171,7 @@ export default function ReportsPage() {
             <EmptyState
               heading="No reports yet"
               action={{ content: "Run a scan", url: "/app" }}
-              image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+              image="/images/Reports.png"
             >
               <p>Queue a store scan to generate your first health report.</p>
             </EmptyState>

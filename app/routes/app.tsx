@@ -10,7 +10,10 @@ import { authenticate } from "../shopify.server";
 import { ensureShop } from "../services/shopify/shops.server";
 import { getModuleVisibility } from "../services/admin/module-visibility.server";
 
-export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
+export const links = () => [
+  { rel: "stylesheet", href: polarisStyles },
+  { rel: "icon", href: "/images/App_Favicon.png", type: "image/png" },
+];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);

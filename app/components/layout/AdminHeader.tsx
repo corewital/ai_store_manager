@@ -7,8 +7,11 @@ export function AdminHeader({ user }: Props) {
   return (
     <header className="admin-header">
       <Link to="/admin" className="admin-header__brand">
-        <span className="admin-header__brand-mark">CP</span>
-        CorePilot Admin
+        <img
+          src="/images/Admin_Dashboard_Logo.png"
+          alt="CorePilot AI Admin"
+          className="admin-header__brand-logo"
+        />
       </Link>
       <div className="admin-header__right">
         <Form method="get" action="/admin/installs" className="admin-header__search-form">

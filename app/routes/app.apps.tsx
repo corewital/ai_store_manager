@@ -100,7 +100,7 @@ export default function AppsPage() {
             {rows.length === 0 ? (
               <EmptyState
                 heading="No app blocks detected"
-                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                image="/images/Settings.png"
               >
                 <p>Run a scan to audit app blocks in your published theme.</p>
               </EmptyState>

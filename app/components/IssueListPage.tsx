@@ -196,7 +196,7 @@ export function IssueListPage({
               <EmptyState
                 heading="No open issues"
                 action={{ content: "Run scan", url: "/app" }}
-                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                image="/images/Dashboard.png"
               >
                 <p>{emptyMessage}</p>
               </EmptyState>

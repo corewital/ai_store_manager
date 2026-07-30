@@ -116,7 +116,7 @@ export default function PerformancePage() {
                 onAction: () => scan.submit({}, { method: "post" }),
                 loading: scan.state !== "idle",
               }}
-              image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+              image="/images/Performance.png"
             >
               <p>
                 We measure homepage, collection, and product page weight to

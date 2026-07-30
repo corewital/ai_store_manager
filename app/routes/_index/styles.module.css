@@ -32,6 +32,14 @@
   font-size: 1.1rem;
 }
 
+.brandLogo {
+  display: block;
+  height: 40px;
+  width: auto;
+  max-width: 220px;
+  object-fit: contain;
+}
+
 .brandMark {
   display: grid;
   place-items: center;
@@ -287,8 +295,23 @@
 }
 
 .featureIcon {
-  font-size: 1.6rem;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
   margin-bottom: 0.6rem;
+  border-radius: 12px;
+  background: #fff;
+  padding: 4px;
+  border: 1px solid var(--border);
+}
+
+.heroLogo {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+  margin: 0 auto 1rem;
+  object-fit: contain;
 }
 
 .feature h3 {

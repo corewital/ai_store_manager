@@ -44,6 +44,11 @@ export default function AdminLogin() {
   return (
     <div className="admin-auth">
       <div className="admin-auth__card">
+        <img
+          src="/images/Admin_Dashboard_Logo.png"
+          alt="CorePilot AI Admin"
+          className="admin-auth__logo"
+        />
         <h1>Sign in to Admin</h1>
         <p className="lead">
           Internal CorePilot back office — invite-only access.

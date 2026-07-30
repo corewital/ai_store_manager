@@ -19,7 +19,7 @@ export const links: LinksFunction = () => [
   { rel: "stylesheet", href: polarisStyles },
   { rel: "stylesheet", href: standardTokens },
   { rel: "stylesheet", href: adminStyles },
-  { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+  { rel: "icon", href: "/images/App_Favicon.png", type: "image/png" },
 ];
 
 export async function loader({ request }: LoaderFunctionArgs) {

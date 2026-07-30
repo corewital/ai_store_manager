@@ -61,6 +61,11 @@ export default function AdminSignup() {
     return (
       <div className="admin-auth">
         <div className="admin-auth__card">
+          <img
+            src="/images/Admin_Dashboard_Logo.png"
+            alt="CorePilot AI Admin"
+            className="admin-auth__logo"
+          />
           <h1>Invite required</h1>
           <p className="lead">
             {data.error ||
@@ -77,6 +82,11 @@ export default function AdminSignup() {
   return (
     <div className="admin-auth">
       <div className="admin-auth__card">
+        <img
+          src="/images/Admin_Dashboard_Logo.png"
+          alt="CorePilot AI Admin"
+          className="admin-auth__logo"
+        />
         <h1>Complete signup</h1>
         <p className="lead">
           Invited as <strong>{data.email}</strong>
