@@ -76,7 +76,7 @@ type CollectionNode = {
   id: string;
   title: string;
   descriptionHtml?: string | null;
-  image?: { url?: string | null } | null;
+  image?: { id?: string | null; url?: string | null; altText?: string | null } | null;
   productsCount?: { count?: number } | null;
   seo?: { title?: string | null; description?: string | null } | null;
 };
@@ -106,9 +106,9 @@ export async function scanCollections(
       query CollectionScan($first: Int!, $cursor: String) {
         collections(first: $first, after: $cursor, sortKey: ID, reverse: false) {
           pageInfo { hasNextPage endCursor }
-          nodes {
+            nodes {
             id title descriptionHtml
-            image { url }
+            image { id url altText }
             productsCount { count }
             seo { title description }
           }
@@ -196,7 +196,7 @@ export async function scanCollections(
       await resolveIssue(shopId, c.id, "seo_description");
     }
 
-    if (!c.image?.url) {
+    if (!c.image?.url?.trim()) {
       await setIssueOpen(shopId, c.id, "no_media", "Missing image", {
         ...details,
         imageUrl: null,

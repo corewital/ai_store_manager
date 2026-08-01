@@ -50,6 +50,12 @@ function resolveEditField(
   fallbackField: string,
   fallbackLabel: string,
 ): { field: string; label: string } {
+  if (issueCode === "no_media") {
+    return {
+      field: "imageUrl",
+      label: "Image URL (or upload above)",
+    };
+  }
   if (issueCode === "seo_title") {
     return { field: "seoTitle", label: "SEO meta title" };
   }
@@ -311,7 +317,9 @@ export function ResourceDetailModal({
             {noMedia && (
               <Banner tone="info">
                 Upload a file or paste a public https image URL. Preview first, then Save
-                to attach it in Shopify. AI cannot invent photos.
+                to attach it in Shopify
+                {module === "collections" ? " as the collection image" : ""}. AI cannot
+                invent photos.
               </Banner>
             )}
             {reviewOnly && (
