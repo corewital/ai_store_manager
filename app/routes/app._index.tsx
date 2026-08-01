@@ -38,6 +38,7 @@ import {
   assertCanScan,
   recordManualScan,
   PlanGateError,
+  getScanCaps,
 } from "../services/shopify/plan-gate.server";
 import { getModuleVisibility } from "../services/admin/module-visibility.server";
 import { getEffectiveScanModules } from "../services/shopify/effective-modules.server";
@@ -124,8 +125,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const shop = await ensureShop(session.shop, session.accessToken);
     const settings = await getOrCreateSettings(shop.id);
     const job = await getShopJobState(shop.id);
-    const plan = await getShopPlan(shop.id);
-    const planDef = PLANS[(plan in PLANS ? plan : "free") as keyof typeof PLANS];
+    const caps = await getScanCaps(shop.id);
+    const plan = caps.plan;
 
     const [master, scanModules, catalog, activity, score] = await Promise.all([
       getModuleVisibility().catch(() => DEFAULT_MODULE_VISIBILITY),
@@ -140,8 +141,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       computeHealthScore(shop.id).catch(() => emptyScore),
     ]);
 
-    const productCap = planDef.productLimit ?? catalog.products;
-    const collectionCap = planDef.collectionLimit ?? catalog.collections;
+    const productCap = caps.productLimit ?? catalog.products;
+    const collectionCap = caps.collectionLimit ?? catalog.collections;
 
     const issueCounts = {
       products: 0,

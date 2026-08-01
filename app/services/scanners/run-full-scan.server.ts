@@ -7,7 +7,6 @@ import {
   inventoryFlags,
   productIssues,
   seoIssues,
-  shops,
 } from "../../db/schema";
 import { scanProducts } from "./product-scanner.server";
 import { scanSeo } from "./seo-scanner.server";
@@ -20,23 +19,9 @@ import { scanApps } from "./apps-scanner.server";
 import { scanPerformance } from "./performance-scanner.server";
 import { upsertTodayHealthScore } from "../scoring/health-score.server";
 import { getEffectiveScanModules } from "../shopify/effective-modules.server";
-import { getPlanLimit } from "../shopify/plan-gate.server";
-import { PLANS, type PlanSlug } from "../../config/plans";
+import { getScanCaps } from "../shopify/plan-gate.server";
 
 const PAGE_SIZE = 25;
-
-/** Prefer the stricter of static PLANS vs DB plan_features (never overscan Free). */
-function resolveCap(
-  staticLimit: number | null | undefined,
-  dbLimit: number | null,
-): number {
-  if (staticLimit == null && (dbLimit == null || dbLimit <= 0)) {
-    return Number.POSITIVE_INFINITY;
-  }
-  if (staticLimit == null) return dbLimit!;
-  if (dbLimit == null || dbLimit <= 0) return staticLimit;
-  return Math.min(staticLimit, dbLimit);
-}
 
 async function withTimeout<T>(
   label: string,
@@ -165,23 +150,16 @@ export async function runFullScan(
     onProgress?: (pct: number, message: string) => Promise<void> | void;
   },
 ) {
-  const shop = await db.query.shops.findFirst({ where: eq(shops.id, shopId) });
-  const plan = (shop?.plan || "free") as PlanSlug;
-  const planDef = PLANS[plan] || PLANS.free;
-  const [dbProductCap, dbCollectionCap] = await Promise.all([
-    getPlanLimit(plan, "products_limit"),
-    getPlanLimit(plan, "collections_limit"),
-  ]);
+  // Always use billing plan (subscription), not stale shops.plan
+  const caps = await getScanCaps(shopId);
+  const maxProducts = caps.maxProducts;
+  const collectionLimit = Number.isFinite(caps.maxCollections)
+    ? caps.maxCollections
+    : null;
 
-  // Hard plan cap — manual + auto both stop here (never overscan)
-  const maxProducts = resolveCap(planDef.productLimit, dbProductCap);
-  const collectionCap = resolveCap(planDef.collectionLimit, dbCollectionCap);
-  const collectionLimit =
-    collectionCap === Number.POSITIVE_INFINITY ? null : collectionCap;
   const planPages = Number.isFinite(maxProducts)
     ? Math.max(1, Math.ceil(Number(maxProducts) / PAGE_SIZE))
     : Math.max(1, options?.maxPages ?? 40);
-  // Never exceed plan pages (ignore higher cron maxPages)
   const maxPages = planPages;
 
   let cursor = options?.cursor ?? null;
@@ -195,8 +173,8 @@ export async function runFullScan(
   await report?.(
     5,
     Number.isFinite(maxProducts)
-      ? `Starting scan (plan cap ${maxProducts} products)…`
-      : "Starting scan…",
+      ? `Starting ${caps.plan} scan (cap ${maxProducts} products / ${collectionLimit ?? "∞"} collections)…`
+      : `Starting ${caps.plan} scan…`,
   );
 
   if (needProductPass) {
@@ -275,7 +253,12 @@ export async function runFullScan(
     }
   }
 
-  await report?.(75, "Scanning collections & navigation…");
+  await report?.(
+    75,
+    collectionLimit != null
+      ? `Scanning collections (up to ${collectionLimit})…`
+      : "Scanning collections & navigation…",
+  );
   if (enabled.collections) {
     await scanCollections(shopId, admin, collectionLimit);
   }
@@ -321,7 +304,8 @@ export async function runFullScan(
   await report?.(
     98,
     Number.isFinite(maxProducts)
-      ? `Finishing… scanned ${Math.min(scannedProducts, Number(maxProducts))}/${maxProducts} products`
+      ? `Finishing… scanned ${Math.min(scannedProducts, Number(maxProducts))}/${maxProducts} products` +
+          (collectionLimit != null ? `, ≤${collectionLimit} collections` : "")
       : "Finishing…",
   );
   return upsertTodayHealthScore(shopId);

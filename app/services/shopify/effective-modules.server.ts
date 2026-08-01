@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db/client";
-import { appSettings, shops } from "../../db/schema";
+import { appSettings } from "../../db/schema";
 import { getModuleVisibility } from "../admin/module-visibility.server";
 import type { AppModuleVisibility } from "../admin/module-visibility";
 import { getOrCreateSettings } from "../shopify/app-settings.server";
 import { PLANS, type PlanSlug } from "../../config/plans";
+import { getShopPlan } from "./billing.server";
 import { SCAN_MODULE_KEYS, type ScanModuleKey } from "./scan-modules";
 
 export { SCAN_MODULE_KEYS };
@@ -25,12 +26,11 @@ function planAllowsModule(planSlug: string, key: ScanModuleKey): boolean {
 export async function getEffectiveScanModules(
   shopId: number,
 ): Promise<Record<ScanModuleKey, boolean>> {
-  const [master, settings, shop] = await Promise.all([
+  const [master, settings, planSlug] = await Promise.all([
     getModuleVisibility(),
     getOrCreateSettings(shopId),
-    db.query.shops.findFirst({ where: eq(shops.id, shopId) }),
+    getShopPlan(shopId),
   ]);
-  const planSlug = shop?.plan || "free";
 
   let shopEnabled: Record<string, boolean> = {};
   try {

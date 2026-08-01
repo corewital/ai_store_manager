@@ -28,7 +28,16 @@ export async function getShopPlan(shopId: number): Promise<PlanSlug> {
     where: eq(billingSubscriptions.shopId, shopId),
   });
   if (sub && sub.status === "active" && sub.plan in PLANS) {
-    return sub.plan as PlanSlug;
+    const slug = sub.plan as PlanSlug;
+    // Keep shops.plan in sync — scans used to read shops.plan and miss upgrades
+    const shop = await db.query.shops.findFirst({ where: eq(shops.id, shopId) });
+    if (shop && shop.plan !== slug) {
+      await db
+        .update(shops)
+        .set({ plan: slug, updatedAt: new Date() })
+        .where(eq(shops.id, shopId));
+    }
+    return slug;
   }
   const shop = await db.query.shops.findFirst({ where: eq(shops.id, shopId) });
   const plan = shop?.plan ?? "free";

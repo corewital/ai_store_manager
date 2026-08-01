@@ -303,3 +303,42 @@ export async function assertModuleAccess(planSlug: string, moduleKey: string) {
     );
   }
 }
+
+/**
+ * Canonical scan caps for a shop — always from billing plan (subscription),
+ * not raw shops.plan (which can lag after upgrade).
+ */
+export async function getScanCaps(shopId: number): Promise<{
+  plan: PlanSlug;
+  maxProducts: number;
+  maxCollections: number;
+  productLimit: number | null;
+  collectionLimit: number | null;
+}> {
+  const { getShopPlan } = await import("./billing.server");
+  const plan = await getShopPlan(shopId);
+  const planDef = PLANS[plan] || PLANS.free;
+  const [dbProducts, dbCollections] = await Promise.all([
+    getPlanLimit(plan, "products_limit"),
+    getPlanLimit(plan, "collections_limit"),
+  ]);
+
+  const productLimit =
+    dbProducts != null && dbProducts > 0
+      ? dbProducts
+      : planDef.productLimit;
+  const collectionLimit =
+    dbCollections != null && dbCollections > 0
+      ? dbCollections
+      : planDef.collectionLimit;
+
+  return {
+    plan,
+    productLimit,
+    collectionLimit,
+    maxProducts:
+      productLimit == null ? Number.POSITIVE_INFINITY : productLimit,
+    maxCollections:
+      collectionLimit == null ? Number.POSITIVE_INFINITY : collectionLimit,
+  };
+}

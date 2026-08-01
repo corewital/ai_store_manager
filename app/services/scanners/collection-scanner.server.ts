@@ -38,33 +38,67 @@ async function upsert(
   });
 }
 
+type CollectionNode = {
+  id: string;
+  title: string;
+  descriptionHtml?: string | null;
+  image?: { url?: string | null } | null;
+  productsCount?: { count?: number } | null;
+};
+
+/**
+ * Scan collections ASC by ID, hard-stop at plan cap (paginated for caps > 250).
+ */
 export async function scanCollections(
   shopId: number,
   admin: AdminApiContext,
   maxCollections?: number | null,
 ) {
-  const first =
-    maxCollections == null
-      ? 50
-      : Math.min(250, Math.max(1, maxCollections));
-  const res = await admin.graphql(
-    `#graphql
-    query CollectionScan($first: Int!) {
-      collections(first: $first, sortKey: ID, reverse: false) {
-        nodes {
-          id title descriptionHtml
-          image { url }
-          productsCount { count }
-        }
-      }
-    }`,
-    { variables: { first } },
-  );
-  const json = await res.json();
-  let nodes = json.data?.collections?.nodes ?? [];
-  if (maxCollections != null) nodes = nodes.slice(0, maxCollections);
+  const cap =
+    maxCollections == null || !Number.isFinite(maxCollections)
+      ? Number.POSITIVE_INFINITY
+      : Math.max(1, Number(maxCollections));
 
-  const allowedIds = nodes.map((c: { id: string }) => c.id);
+  const nodes: CollectionNode[] = [];
+  let cursor: string | null = null;
+  let hasNext = true;
+
+  while (hasNext && nodes.length < cap) {
+    const pageSize = Math.min(250, Math.max(1, Number(cap) - nodes.length));
+    const res: Response = await admin.graphql(
+      `#graphql
+      query CollectionScan($first: Int!, $cursor: String) {
+        collections(first: $first, after: $cursor, sortKey: ID, reverse: false) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id title descriptionHtml
+            image { url }
+            productsCount { count }
+          }
+        }
+      }`,
+      { variables: { first: pageSize, cursor } },
+    );
+    const json: {
+      data?: {
+        collections?: {
+          pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
+          nodes?: CollectionNode[];
+        };
+      };
+    } = await res.json();
+    const connection = json.data?.collections;
+    const pageNodes: CollectionNode[] = connection?.nodes ?? [];
+    for (const c of pageNodes) {
+      if (nodes.length >= cap) break;
+      nodes.push(c);
+    }
+    hasNext = Boolean(connection?.pageInfo?.hasNextPage) && nodes.length < cap;
+    cursor = connection?.pageInfo?.endCursor ?? null;
+    if (!pageNodes.length) break;
+  }
+
+  const allowedIds = nodes.map((c) => c.id);
 
   for (const c of nodes) {
     const count = c.productsCount?.count ?? 0;
@@ -94,7 +128,7 @@ export async function scanCollections(
     }
   }
 
-  if (maxCollections != null && allowedIds.length > 0) {
+  if (Number.isFinite(cap) && allowedIds.length > 0) {
     await db
       .update(collectionIssues)
       .set({
@@ -111,4 +145,6 @@ export async function scanCollections(
         ),
       );
   }
+
+  return { scanned: nodes.length, collectionIds: allowedIds };
 }
