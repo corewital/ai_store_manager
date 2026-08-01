@@ -122,6 +122,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const settings = await getOrCreateSettings(shop.id);
     const job = await getShopJobState(shop.id);
     const plan = await getShopPlan(shop.id);
+    const planDef = PLANS[(plan in PLANS ? plan : "free") as keyof typeof PLANS];
 
     const [master, scanModules, catalog, activity, score] = await Promise.all([
       getModuleVisibility().catch(() => DEFAULT_MODULE_VISIBILITY),
@@ -135,6 +136,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       listShopActivity(shop.id, session.shop, 5).catch(() => []),
       computeHealthScore(shop.id).catch(() => emptyScore),
     ]);
+
+    const productCap = planDef.productLimit ?? catalog.products;
+    const collectionCap = planDef.collectionLimit ?? catalog.collections;
 
     const issueCounts = {
       products: 0,
@@ -188,6 +192,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         shopDomain: session.shop,
         score,
         plan,
+        productCap,
+        collectionCap,
         issueCounts,
         catalog,
         totalOpen,
@@ -211,6 +217,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         shopDomain: session.shop,
         score,
         plan,
+        productCap,
+        collectionCap,
         issueCounts,
         catalog,
         totalOpen: 0,
@@ -233,6 +241,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       shopDomain: session.shop,
       score: emptyScore,
       plan: "free" as const,
+      productCap: PLANS.free.productLimit,
+      collectionCap: PLANS.free.collectionLimit,
       issueCounts: {
         products: 0,
         seo: 0,
@@ -289,6 +299,8 @@ export default function Index() {
     shopDomain,
     score,
     plan,
+    productCap,
+    collectionCap,
     issueCounts,
     catalog,
     totalOpen,
@@ -335,9 +347,11 @@ export default function Index() {
   function moduleTotals(key: HealthCategory) {
     const open = key in issueCounts ? issueCounts[key as keyof typeof issueCounts] : 0;
     if (key === "products" || key === "seo" || key === "images" || key === "inventory") {
-      return { total: catalog.products, open };
+      return { total: productCap || catalog.products, open };
     }
-    if (key === "collections") return { total: catalog.collections, open };
+    if (key === "collections") {
+      return { total: collectionCap || catalog.collections, open };
+    }
     return { total: Math.max(open, 0), open };
   }
 
@@ -411,7 +425,8 @@ export default function Index() {
             <h1>Store Health</h1>
             <p className="dashHeroMeta">
               {gradeLabel(score.overall)} · {shopDomain} · {PLANS[plan].name} ·{" "}
-              {catalog.products.toLocaleString()} products
+              {catalog.products.toLocaleString()} in store · scan cap{" "}
+              {productCap.toLocaleString()} products / {collectionCap} collections
             </p>
             <p className="dashHeroMeta">
               {lastScannedAt

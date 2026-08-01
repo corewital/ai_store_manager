@@ -21,8 +21,43 @@ import { scanPerformance } from "./performance-scanner.server";
 import { upsertTodayHealthScore } from "../scoring/health-score.server";
 import { getEffectiveScanModules } from "../shopify/effective-modules.server";
 import { getPlanLimit } from "../shopify/plan-gate.server";
+import { PLANS, type PlanSlug } from "../../config/plans";
 
 const PAGE_SIZE = 25;
+
+/** Prefer the stricter of static PLANS vs DB plan_features (never overscan Free). */
+function resolveCap(
+  staticLimit: number | null | undefined,
+  dbLimit: number | null,
+): number {
+  if (staticLimit == null && (dbLimit == null || dbLimit <= 0)) {
+    return Number.POSITIVE_INFINITY;
+  }
+  if (staticLimit == null) return dbLimit!;
+  if (dbLimit == null || dbLimit <= 0) return staticLimit;
+  return Math.min(staticLimit, dbLimit);
+}
+
+async function withTimeout<T>(
+  label: string,
+  ms: number,
+  fn: () => Promise<T>,
+): Promise<T | null> {
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<null>((resolve) => {
+        setTimeout(() => {
+          console.warn(`[scan] ${label} timed out after ${ms}ms — skipped`);
+          resolve(null);
+        }, ms);
+      }),
+    ]);
+  } catch (error) {
+    console.error(`[scan] ${label} failed:`, error);
+    return null;
+  }
+}
 
 /** Close open issues outside the plan product window (listings stay within limit). */
 async function pruneOutOfCapProductIssues(
@@ -131,17 +166,18 @@ export async function runFullScan(
   },
 ) {
   const shop = await db.query.shops.findFirst({ where: eq(shops.id, shopId) });
-  const plan = shop?.plan || "free";
-  const [productCap, collectionCap] = await Promise.all([
+  const plan = (shop?.plan || "free") as PlanSlug;
+  const planDef = PLANS[plan] || PLANS.free;
+  const [dbProductCap, dbCollectionCap] = await Promise.all([
     getPlanLimit(plan, "products_limit"),
     getPlanLimit(plan, "collections_limit"),
   ]);
 
-  // Hard plan cap — manual + auto both stop here (no overscan)
-  const maxProducts =
-    productCap == null || productCap <= 0
-      ? Number.POSITIVE_INFINITY
-      : productCap;
+  // Hard plan cap — manual + auto both stop here (never overscan)
+  const maxProducts = resolveCap(planDef.productLimit, dbProductCap);
+  const collectionCap = resolveCap(planDef.collectionLimit, dbCollectionCap);
+  const collectionLimit =
+    collectionCap === Number.POSITIVE_INFINITY ? null : collectionCap;
   const planPages = Number.isFinite(maxProducts)
     ? Math.max(1, Math.ceil(Number(maxProducts) / PAGE_SIZE))
     : Math.max(1, options?.maxPages ?? 40);
@@ -241,13 +277,25 @@ export async function runFullScan(
 
   await report?.(75, "Scanning collections & navigation…");
   if (enabled.collections) {
-    await scanCollections(shopId, admin, collectionCap);
+    await scanCollections(shopId, admin, collectionLimit);
   }
-  if (enabled.navigation) await scanNavigation(shopId, admin);
-  await report?.(85, "Scanning theme, apps & performance…");
-  if (enabled.theme) await scanTheme(shopId, admin);
-  if (enabled.apps) await scanApps(shopId, admin);
-  if (enabled.performance) await scanPerformance(shopId, admin);
+  if (enabled.navigation) {
+    await withTimeout("navigation", 15_000, () =>
+      scanNavigation(shopId, admin),
+    );
+  }
+  await report?.(85, "Finishing store extras…");
+  if (enabled.theme) {
+    await withTimeout("theme", 15_000, () => scanTheme(shopId, admin));
+  }
+  if (enabled.apps) {
+    await withTimeout("apps", 20_000, () => scanApps(shopId, admin));
+  }
+  if (enabled.performance) {
+    await withTimeout("performance", 25_000, () =>
+      scanPerformance(shopId, admin),
+    );
+  }
 
   await report?.(92, "Updating health score…");
   const existingSettings = await db.query.appSettings.findFirst({

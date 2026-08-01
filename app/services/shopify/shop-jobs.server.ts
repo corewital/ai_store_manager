@@ -8,7 +8,7 @@ import { runFullScan } from "../scanners/run-full-scan.server";
 import { unauthenticated } from "../../shopify.server";
 
 const BUSY = new Set(["queued", "running"]);
-const STALE_MS = 15 * 60 * 1000;
+const STALE_MS = 8 * 60 * 1000;
 
 export function isJobBusy(status?: string | null) {
   return BUSY.has(status || "");

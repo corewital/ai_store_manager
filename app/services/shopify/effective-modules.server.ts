@@ -1,27 +1,36 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db/client";
-import { appSettings } from "../../db/schema";
+import { appSettings, shops } from "../../db/schema";
 import { getModuleVisibility } from "../admin/module-visibility.server";
 import type { AppModuleVisibility } from "../admin/module-visibility";
 import { getOrCreateSettings } from "../shopify/app-settings.server";
-
+import { PLANS, type PlanSlug } from "../../config/plans";
 import { SCAN_MODULE_KEYS, type ScanModuleKey } from "./scan-modules";
 
 export { SCAN_MODULE_KEYS };
 export type { ScanModuleKey };
 
+function planAllowsModule(planSlug: string, key: ScanModuleKey): boolean {
+  const p = PLANS[planSlug as PlanSlug] || PLANS.free;
+  const mods = p.modules as readonly string[];
+  if (mods.includes("*")) return true;
+  return mods.includes(key);
+}
+
 /**
  * Effective modules for a shop:
- * admin master visibility AND shop modulesEnabledJson (merchant toggle).
- * Admin-off always wins (cannot scan/show).
+ * plan entitlements AND admin master visibility AND shop toggle.
+ * Free never runs inventory / performance / theme / apps / etc.
  */
 export async function getEffectiveScanModules(
   shopId: number,
 ): Promise<Record<ScanModuleKey, boolean>> {
-  const [master, settings] = await Promise.all([
+  const [master, settings, shop] = await Promise.all([
     getModuleVisibility(),
     getOrCreateSettings(shopId),
+    db.query.shops.findFirst({ where: eq(shops.id, shopId) }),
   ]);
+  const planSlug = shop?.plan || "free";
 
   let shopEnabled: Record<string, boolean> = {};
   try {
@@ -34,9 +43,10 @@ export async function getEffectiveScanModules(
 
   return Object.fromEntries(
     SCAN_MODULE_KEYS.map((key) => {
+      const planOn = planAllowsModule(planSlug, key);
       const adminOn = master[key as keyof AppModuleVisibility] !== false;
       const shopOn = shopEnabled[key] !== false;
-      return [key, adminOn && shopOn];
+      return [key, planOn && adminOn && shopOn];
     }),
   ) as Record<ScanModuleKey, boolean>;
 }
@@ -63,7 +73,6 @@ export async function saveShopModulesEnabled(
   enabled: Record<string, boolean>,
 ) {
   const settings = await getOrCreateSettings(shopId);
-  // Force off anything admin has hidden
   const master = await getModuleVisibility();
   const cleaned = Object.fromEntries(
     SCAN_MODULE_KEYS.map((k) => {
