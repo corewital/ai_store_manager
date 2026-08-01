@@ -1,6 +1,31 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db, insertReturningId } from "../../db/client";
 import { activityLogs, appInstalls, sessions, shops } from "../../db/schema";
+
+/**
+ * Keep a single app_installs row per shop domain.
+ * Concurrent ensureShop (storeSession + afterAuth) used to insert twice.
+ */
+async function collapseDuplicateInstalls(shopDomain: string) {
+  const rows = await db.query.appInstalls.findMany({
+    where: eq(appInstalls.shopDomain, shopDomain),
+    orderBy: [desc(appInstalls.id)],
+  });
+  if (rows.length === 0) return null;
+
+  const keep =
+    rows.find((r) => !r.deletedAt && r.status === "active") ??
+    rows.find((r) => !r.deletedAt) ??
+    rows[0];
+
+  for (const row of rows) {
+    if (row.id === keep.id) continue;
+    // Hard-delete extras — unique(shop_domain) cannot keep soft-deleted twins.
+    await db.delete(appInstalls).where(eq(appInstalls.id, row.id));
+  }
+
+  return keep;
+}
 
 async function syncInstallRecord(shop: typeof shops.$inferSelect) {
   await db
@@ -8,10 +33,7 @@ async function syncInstallRecord(shop: typeof shops.$inferSelect) {
     .set({ shopId: shop.id, updatedAt: new Date() })
     .where(eq(sessions.shop, shop.shopDomain));
 
-  const existing = await db.query.appInstalls.findFirst({
-    where: eq(appInstalls.shopDomain, shop.shopDomain),
-    orderBy: [desc(appInstalls.id)],
-  });
+  let existing = await collapseDuplicateInstalls(shop.shopDomain);
 
   if (existing) {
     if (
@@ -39,19 +61,50 @@ async function syncInstallRecord(shop: typeof shops.$inferSelect) {
     return existing.id;
   }
 
-  const id = await insertReturningId(appInstalls, {
-    shopId: shop.id,
-    shopDomain: shop.shopDomain,
-    status: "active",
-  });
+  try {
+    const id = await insertReturningId(appInstalls, {
+      shopId: shop.id,
+      shopDomain: shop.shopDomain,
+      status: "active",
+    });
 
-  await db.insert(activityLogs).values({
-    action: "app_installed",
-    entityType: "app_install",
-    entityId: String(id),
-    metaJson: JSON.stringify({ shopDomain: shop.shopDomain }),
-  });
-  return id;
+    // Another concurrent install may have inserted too — keep one row.
+    const keep = await collapseDuplicateInstalls(shop.shopDomain);
+    if (keep && keep.id === id) {
+      await db.insert(activityLogs).values({
+        action: "app_installed",
+        entityType: "app_install",
+        entityId: String(id),
+        metaJson: JSON.stringify({ shopDomain: shop.shopDomain }),
+      });
+    } else if (keep && keep.id !== id) {
+      await db
+        .update(appInstalls)
+        .set({
+          shopId: shop.id,
+          status: "active",
+          deletedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(appInstalls.id, keep.id));
+    }
+    return keep?.id ?? id;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (!/UNIQUE|unique|constraint/i.test(msg)) throw error;
+    existing = await collapseDuplicateInstalls(shop.shopDomain);
+    if (!existing) throw error;
+    await db
+      .update(appInstalls)
+      .set({
+        shopId: shop.id,
+        status: "active",
+        deletedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(appInstalls.id, existing.id));
+    return existing.id;
+  }
 }
 
 function appApiUrlFromEnv() {
@@ -137,8 +190,9 @@ export async function markShopUninstalled(shopDomain: string) {
     .set({ accessToken: null, uninstalledAt: now, updatedAt: now })
     .where(eq(shops.shopDomain, shopDomain));
 
+  await collapseDuplicateInstalls(shopDomain);
   const install = await db.query.appInstalls.findFirst({
-    where: eq(appInstalls.shopDomain, shopDomain),
+    where: and(eq(appInstalls.shopDomain, shopDomain), isNull(appInstalls.deletedAt)),
     orderBy: [desc(appInstalls.id)],
   });
   if (install) {

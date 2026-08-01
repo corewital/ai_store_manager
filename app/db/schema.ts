@@ -367,14 +367,13 @@ export const appInstalls = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     shopId: integer("shop_id").references(() => shops.id),
-    shopDomain: text("shop_domain").notNull(),
+    shopDomain: text("shop_domain").notNull().unique(),
     status: text("status").notNull().default("active"),
     frozenAt: integer("frozen_at", { mode: "timestamp_ms" }),
     notes: text("notes"),
     ...timestamps,
     ...softDelete,
   },
-  (t) => [index("app_installs_domain_idx").on(t.shopDomain)],
 );
 
 export const systemSettings = sqliteTable(
