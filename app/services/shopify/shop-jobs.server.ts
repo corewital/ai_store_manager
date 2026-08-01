@@ -1,3 +1,4 @@
+import { waitUntil } from "@vercel/functions";
 import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { db } from "../../db/client";
 import { appSettings, fixQueue, shops, cronRunLogs } from "../../db/schema";
@@ -9,6 +10,42 @@ import { unauthenticated } from "../../shopify.server";
 
 const BUSY = new Set(["queued", "running"]);
 const STALE_MS = 8 * 60 * 1000;
+
+/**
+ * Keep background work alive after the HTTP response on Vercel.
+ * Local/dev has no waitUntil context — the promise still runs in-process.
+ */
+function runAfterResponse(work: Promise<unknown>) {
+  try {
+    waitUntil(work);
+  } catch {
+    /* non-Vercel / missing context */
+  }
+  void work;
+}
+
+function isStaleJob(startedAt?: Date | string | null) {
+  if (!startedAt) return true;
+  const t = startedAt instanceof Date ? startedAt.getTime() : new Date(startedAt).getTime();
+  if (!Number.isFinite(t)) return true;
+  return Date.now() - t > STALE_MS;
+}
+
+/** Separate serverless invoke so scan is not killed with the dashboard POST. */
+async function kickProcessJobsWorker(): Promise<boolean> {
+  const secret = process.env.CRON_SECRET;
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  if (!secret || !base) return false;
+  try {
+    const res = await fetch(`${base}/api/cron/process-jobs`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${secret}` },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 export function isJobBusy(status?: string | null) {
   return BUSY.has(status || "");
@@ -44,13 +81,22 @@ async function setJob(
 }
 
 /**
- * Queue a full scan. On Hobby Vercel cron is only daily, so we process
- * this shop immediately in the same request (still async from the UI).
+ * Queue a full scan and continue processing after the HTTP response.
+ * Prefers a separate `/api/cron/process-jobs` invoke (full maxDuration);
+ * falls back to in-request processing when APP URL / CRON_SECRET missing.
  */
 export async function enqueueShopScan(shopId: number) {
   const state = await getShopJobState(shopId);
   if (state.busy) {
-    return { ok: false as const, error: `Job already ${state.status}: ${state.type}` };
+    if (!isStaleJob(state.startedAt)) {
+      return { ok: false as const, error: `Job already ${state.status}: ${state.type}` };
+    }
+    await setJob(shopId, {
+      jobStatus: "idle",
+      jobType: null,
+      jobMessage: "Cleared stale scan — restarting…",
+      jobFinishedAt: new Date(),
+    });
   }
   await setJob(shopId, {
     jobStatus: "queued",
@@ -60,15 +106,20 @@ export async function enqueueShopScan(shopId: number) {
     jobFinishedAt: null,
   });
 
-  // Do not block the HTTP request — dashboard polls progress %
-  void processOneShop(shopId, "scan").catch(async (error) => {
-    const msg = error instanceof Error ? error.message : String(error);
-    await setJob(shopId, {
-      jobStatus: "failed",
-      jobMessage: msg.slice(0, 500),
-      jobFinishedAt: new Date(),
-    });
-  });
+  runAfterResponse(
+    (async () => {
+      const kicked = await kickProcessJobsWorker();
+      if (kicked) return;
+      await processOneShop(shopId, "scan");
+    })().catch(async (error) => {
+      const msg = error instanceof Error ? error.message : String(error);
+      await setJob(shopId, {
+        jobStatus: "failed",
+        jobMessage: msg.slice(0, 500),
+        jobFinishedAt: new Date(),
+      });
+    }),
+  );
 
   return {
     ok: true as const,
@@ -140,7 +191,10 @@ async function processOneShop(
   try {
     await setJob(shop.id, {
       jobStatus: "running",
-      jobMessage: `Running ${jobType || "job"}…`,
+      jobMessage:
+        jobType === "scan"
+          ? "8% · Connecting to store…"
+          : `10% · Running ${jobType || "job"}…`,
     });
 
     const { admin } = await unauthenticated.admin(shop.shopDomain);

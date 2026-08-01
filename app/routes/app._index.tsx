@@ -318,16 +318,16 @@ export default function Index() {
   const scanProgress = progressMatch
     ? Math.min(100, Number(progressMatch[1]))
     : job.busy
-      ? 12
+      ? 8
       : job.status === "completed"
         ? 100
         : 0;
 
   useEffect(() => {
-    if (!job.busy) return;
+    if (!job.busy && scan.state === "idle") return;
     const t = setInterval(() => revalidator.revalidate(), 2500);
     return () => clearInterval(t);
-  }, [job.busy, revalidator]);
+  }, [job.busy, scan.state, revalidator]);
 
   useEffect(() => {
     if (scan.state === "idle" && scan.data?.ok) {
@@ -374,6 +374,9 @@ export default function Index() {
     pendingFixes,
   );
 
+  const showProgress = job.busy || scanning;
+  const progressLabel = job.message || (scanning ? "5% · Scan starting…" : job.status);
+
   return (
     <Page fullWidth>
       <TitleBar title="Dashboard" />
@@ -404,17 +407,17 @@ export default function Index() {
           <Banner tone="critical">Job failed: {job.message}</Banner>
         )}
 
-        {job.busy && (
+        {showProgress && (
           <div className="dashProgress">
             <div className="dashProgressHead">
-              <span>{job.type === "scan" ? "Scan in progress" : "Job running"}</span>
-              <span>{scanProgress}%</span>
+              <span>{job.type === "fix" ? "Job running" : "Scan in progress"}</span>
+              <span>{scanProgress || 5}%</span>
             </div>
             <div className="dashBar">
-              <span style={{ width: `${scanProgress}%`, background: "#ea580c" }} />
+              <span style={{ width: `${scanProgress || 5}%`, background: "#ea580c" }} />
             </div>
             <Text as="p" variant="bodySm" tone="subdued">
-              {job.message || job.status}
+              {progressLabel}
             </Text>
           </div>
         )}
@@ -429,9 +432,13 @@ export default function Index() {
               {productCap.toLocaleString()} products / {collectionCap} collections
             </p>
             <p className="dashHeroMeta">
-              {lastScannedAt
-                ? `Last scan ${new Date(lastScannedAt).toLocaleString()}`
-                : "No scan yet — queue one now"}
+              {showProgress
+                ? job.type === "fix"
+                  ? "Job in progress…"
+                  : "Scan in progress — scores update when it finishes."
+                : lastScannedAt
+                  ? `Last scan ${new Date(lastScannedAt).toLocaleString()}`
+                  : "No scan yet — queue one now"}
             </p>
           </div>
           <div className="dashHeroActions">
@@ -441,11 +448,9 @@ export default function Index() {
                 className="dashBtn dashBtnPrimary"
                 disabled={job.busy || scanning}
               >
-                {job.busy
-                  ? `Scanning… ${scanProgress}%`
-                  : scanning
-                    ? "Starting…"
-                    : "Scan Now"}
+                {job.busy || scanning
+                  ? `Scanning… ${scanProgress || 5}%`
+                  : "Scan Now"}
               </button>
             </scan.Form>
             <Link className="dashBtn dashBtnAccent" to="/app/assistant">

@@ -75,7 +75,7 @@ const PLAN_DEFS = [
     shopifyPlanHandle: "free",
     features: [
       { featureKey: "products_limit", limitValue: 50, enabled: true },
-      { featureKey: "collections_limit", limitValue: 10, enabled: true },
+      { featureKey: "collections_limit", limitValue: 3, enabled: true },
       { featureKey: "ai_fixes_limit", limitValue: 50, enabled: true },
       { featureKey: "manual_scans_limit", limitValue: 3, enabled: true },
       { featureKey: "scan_cadence", limitValue: 0, enabled: true },
