@@ -1,0 +1,292 @@
+.dash {
+  --dash-ink: #0f172a;
+  --dash-muted: #64748b;
+  --dash-green: #16a34a;
+  --dash-green-soft: #dcfce7;
+  --dash-teal: #0d9488;
+  --dash-blue: #1e3a5f;
+  --dash-card: #ffffff;
+  --dash-border: #e2e8f0;
+  display: grid;
+  gap: 1rem;
+}
+
+.dashHero {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 1.5rem;
+  align-items: center;
+  background: var(--dash-card);
+  border: 1px solid var(--dash-border);
+  border-radius: 18px;
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.dashHeroCopy h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.45rem;
+  color: var(--dash-ink);
+}
+
+.dashHeroMeta {
+  margin: 0;
+  color: var(--dash-muted);
+  font-size: 0.9rem;
+}
+
+.dashHeroActions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.dashBtn {
+  appearance: none;
+  border: none;
+  border-radius: 10px;
+  padding: 0.7rem 1.15rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dashBtnPrimary {
+  background: var(--dash-blue);
+  color: #fff;
+}
+
+.dashBtnPrimary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dashBtnAccent {
+  background: var(--dash-green);
+  color: #fff;
+}
+
+.dashMetrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.85rem;
+}
+
+.dashMetric {
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  color: #fff;
+  min-height: 118px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+
+.dashMetricMint {
+  background: linear-gradient(145deg, #86efac, #4ade80);
+  color: #14532d;
+}
+
+.dashMetricGreen {
+  background: linear-gradient(145deg, #22c55e, #15803d);
+}
+
+.dashMetricBlue {
+  background: linear-gradient(145deg, #1e3a5f, #0f172a);
+}
+
+.dashMetricLabel {
+  font-size: 0.78rem;
+  font-weight: 700;
+  opacity: 0.9;
+}
+
+.dashMetricValue {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+  margin: 0.35rem 0;
+}
+
+.dashMetricHint {
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+
+.dashSpark {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.6rem;
+  opacity: 0.55;
+}
+
+.dashMain {
+  display: grid;
+  grid-template-columns: 1.7fr 1fr;
+  gap: 1rem;
+}
+
+.dashPanel {
+  background: var(--dash-card);
+  border: 1px solid var(--dash-border);
+  border-radius: 16px;
+  padding: 1.1rem 1.2rem;
+}
+
+.dashPanelTitle {
+  margin: 0 0 0.9rem;
+  font-size: 1.05rem;
+  color: var(--dash-ink);
+}
+
+.dashCats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.dashCat {
+  border: 1px solid var(--dash-border);
+  border-radius: 14px;
+  padding: 0.9rem;
+  text-decoration: none;
+  color: inherit;
+  background: #f8fafc;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.dashCat:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.06);
+}
+
+.dashCatIcon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  margin-bottom: 0.45rem;
+}
+
+.dashCatName {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--dash-ink);
+}
+
+.dashCatScore {
+  margin: 0.2rem 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--dash-ink);
+}
+
+.dashCatClear {
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+  color: var(--dash-muted);
+}
+
+.dashBar {
+  height: 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.dashBar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--dash-green);
+}
+
+.dashSide {
+  display: grid;
+  gap: 1rem;
+}
+
+.dashInsight {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.dashInsight li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  font-size: 0.86rem;
+  color: #334155;
+  line-height: 1.35;
+}
+
+.dashInsight li::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-top: 0.4rem;
+  border-radius: 50%;
+  background: var(--dash-teal);
+  flex-shrink: 0;
+}
+
+.dashRec {
+  background: linear-gradient(160deg, #f0fdf4, #ecfdf5);
+  border: 1px solid #bbf7d0;
+  border-radius: 14px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.dashRec h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--dash-ink);
+}
+
+.dashRec p {
+  margin: 0;
+  color: var(--dash-muted);
+  font-size: 0.85rem;
+}
+
+.dashProgress {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+}
+
+.dashProgressHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.55rem;
+  font-weight: 700;
+  color: var(--dash-ink);
+}
+
+@media (max-width: 980px) {
+  .dashHero {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  .dashHeroActions {
+    justify-content: center;
+  }
+  .dashMetrics,
+  .dashMain {
+    grid-template-columns: 1fr;
+  }
+}

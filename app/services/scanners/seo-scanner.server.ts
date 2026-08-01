@@ -10,6 +10,7 @@ async function upsert(
   resourceId: string,
   issueCode: string,
   title: string,
+  details?: Record<string, unknown>,
 ) {
   const existing = await db.query.seoIssues.findFirst({
     where: and(
@@ -20,13 +21,22 @@ async function upsert(
       isNull(seoIssues.deletedAt),
     ),
   });
-  if (existing) return;
+  if (existing) {
+    if (details) {
+      await db
+        .update(seoIssues)
+        .set({ detailsJson: JSON.stringify(details), updatedAt: new Date() })
+        .where(eq(seoIssues.id, existing.id));
+    }
+    return;
+  }
   await db.insert(seoIssues).values({
     shopId,
     resourceId,
     resourceType: "product",
     issueCode,
     title,
+    detailsJson: details ? JSON.stringify(details) : null,
   });
 }
 
@@ -38,7 +48,9 @@ export async function scanSeo(shopId: number, admin: Admin, cursor?: string | nu
         pageInfo { hasNextPage endCursor }
         nodes {
           id title
+          featuredImage { url }
           seo { title description }
+          variants(first: 5) { nodes { sku } }
         }
       }
     }`,
@@ -47,11 +59,26 @@ export async function scanSeo(shopId: number, admin: Admin, cursor?: string | nu
   const json = await res.json();
   const connection = json.data?.products;
   for (const p of connection?.nodes ?? []) {
+    const skus = (p.variants?.nodes ?? [])
+      .map((v: { sku?: string | null }) => v.sku)
+      .filter(Boolean);
+    const details = {
+      productTitle: p.title,
+      title: p.title,
+      imageUrl: p.featuredImage?.url ?? null,
+      sku: skus[0] || null,
+    };
     if (!p.seo?.title || p.seo.title.length < 10) {
-      await upsert(shopId, p.id, "seo_title", `Weak SEO title: ${p.title}`);
+      await upsert(shopId, p.id, "seo_title", `Weak SEO title: ${p.title}`, details);
     }
     if (!p.seo?.description || p.seo.description.length < 50) {
-      await upsert(shopId, p.id, "seo_description", `Weak SEO description: ${p.title}`);
+      await upsert(
+        shopId,
+        p.id,
+        "seo_description",
+        `Weak SEO description: ${p.title}`,
+        details,
+      );
     }
   }
   return {

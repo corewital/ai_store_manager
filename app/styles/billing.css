@@ -1,0 +1,153 @@
+/* Plans & Billing — polished plan cards (embedded Polaris page) */
+.cp-billing-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  padding: 1.5rem 1.75rem;
+  background:
+    linear-gradient(145deg, #0f1f2e 0%, #16324a 45%, #1a3d3a 100%);
+  color: #f4f7f9;
+  box-shadow:
+    0 18px 40px rgba(15, 31, 46, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transform: perspective(900px) rotateX(1.5deg);
+  transform-origin: top center;
+}
+
+.cp-billing-hero__glow {
+  position: absolute;
+  inset: -40% -20% auto auto;
+  width: 55%;
+  height: 140%;
+  background: radial-gradient(
+    circle at 30% 40%,
+    rgba(62, 184, 168, 0.35),
+    transparent 65%
+  );
+  pointer-events: none;
+}
+
+.cp-billing-hero__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.cp-billing-hero__content .Polaris-Text--root {
+  color: inherit;
+}
+
+.cp-billing-hero__content .Polaris-Text--subdued {
+  color: rgba(244, 247, 249, 0.72) !important;
+}
+
+.cp-billing-usage {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  max-width: 420px;
+}
+
+.cp-billing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  perspective: 1200px;
+}
+
+.cp-plan-card {
+  position: relative;
+  border-radius: 14px;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  transform-style: preserve-3d;
+}
+
+.cp-plan-card:hover {
+  transform: translateY(-4px) rotateX(2deg) rotateY(-2deg);
+  box-shadow: 0 16px 32px rgba(15, 31, 46, 0.14);
+}
+
+.cp-plan-card__face {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.15rem 1.2rem 1.25rem;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f8fa 100%);
+  border: 1px solid rgba(15, 31, 46, 0.1);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 8px 20px rgba(15, 31, 46, 0.06);
+}
+
+.cp-plan-card.is-current .cp-plan-card__face {
+  border-color: #2f8f7b;
+  box-shadow:
+    0 0 0 1px rgba(47, 143, 123, 0.35),
+    0 10px 24px rgba(47, 143, 123, 0.12);
+}
+
+.cp-plan-card.is-featured .cp-plan-card__face {
+  background: linear-gradient(165deg, #ffffff 0%, #eef6f4 100%);
+}
+
+.cp-plan-card.is-enterprise .cp-plan-card__face {
+  background:
+    linear-gradient(160deg, #101820 0%, #1c2e3a 55%, #243f3c 100%);
+  color: #f4f7f9;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.cp-plan-card.is-enterprise .cp-plan-card__meta,
+.cp-plan-card.is-enterprise .cp-plan-card__features {
+  color: rgba(244, 247, 249, 0.78);
+}
+
+.cp-plan-card.is-enterprise .Polaris-Text--root {
+  color: #f4f7f9;
+}
+
+.cp-plan-card__price {
+  margin: 0;
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.cp-plan-card__meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #5c6b76;
+}
+
+.cp-plan-card__features {
+  margin: 0 0 0.35rem;
+  padding-left: 1.1rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: #334155;
+}
+
+.cp-plan-card__features li::marker {
+  color: #2f8f7b;
+}
+
+.cp-plan-card.is-enterprise .cp-plan-card__features li::marker {
+  color: #5ec4b0;
+}
+
+@media (max-width: 768px) {
+  .cp-billing-hero {
+    transform: none;
+  }
+  .cp-plan-card:hover {
+    transform: translateY(-2px);
+  }
+}

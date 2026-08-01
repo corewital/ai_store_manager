@@ -280,7 +280,7 @@ export async function previewModuleFix(
     if (!(await hasAnyAiKey())) {
       return {
         ok: false,
-        error: "AI is not configured. Add an API key in Admin → AI providers.",
+        error: "AI is temporarily unavailable. Please try again later or contact support.",
       };
     }
     const plan = await getShopPlan(shopId);
@@ -373,7 +373,7 @@ export async function runModuleFix(
       if (!(await hasAnyAiKey())) {
         return {
           ok: false,
-          error: "AI is not configured. Add an API key in Admin → AI providers.",
+          error: "AI is temporarily unavailable. Please try again later or contact support.",
         };
       }
       const plan = await getShopPlan(shopId);

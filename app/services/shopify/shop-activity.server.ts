@@ -1,6 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { db } from "../../db/client";
 import { activityLogs, fixQueue, reportsSent } from "../../db/schema";
+import { merchantSafeError } from "../../lib/errors.server";
 
 export type ShopActivityItem = {
   id: string;
@@ -55,7 +56,7 @@ export async function listShopActivity(
       id: `fix-${f.id}`,
       kind: "fix",
       title: `${f.status === "done" ? "Fixed" : f.status === "failed" ? "Fix failed" : "Fix queued"}: ${f.module}`,
-      detail: f.errorMessage || f.action,
+      detail: f.errorMessage ? merchantSafeError(f.errorMessage) : f.action,
       before: typeof meta.before === "string" ? meta.before : null,
       after: typeof meta.after === "string" ? meta.after : null,
       module: f.module,

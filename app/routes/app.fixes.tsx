@@ -1,5 +1,5 @@
 ﻿import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { useFetcher, useLoaderData } from "@remix-run/react";
+import { useFetcher, useLoaderData, useSearchParams } from "@remix-run/react";
 import {
   Page,
   Card,
@@ -10,6 +10,8 @@ import {
   Text,
   Badge,
   IndexTable,
+  Pagination,
+  Select,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { and, count, desc, eq, isNull } from "drizzle-orm";
@@ -18,18 +20,39 @@ import { db } from "../db/client";
 import { fixQueue } from "../db/schema";
 import { ensureShop } from "../services/shopify/shops.server";
 import { enqueueShopFixes } from "../services/shopify/shop-jobs.server";
+import { listShopActivity } from "../services/shopify/shop-activity.server";
 import { REPORTS_NAV, SubNav } from "../components/SubNav";
 import { requireAppModule } from "../services/shopify/require-module.server";
+import { merchantSafeError } from "../lib/errors.server";
+import { issueLabel } from "../lib/issue-labels";
+
+const PAGE_SIZE = 15;
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop, session.accessToken);
   await requireAppModule("fixes", shop.id);
 
+  const url = new URL(request.url);
+  const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+  const status = url.searchParams.get("status") || "all";
+
+  const conditions = [
+    eq(fixQueue.shopId, shop.id),
+    isNull(fixQueue.deletedAt),
+  ];
+  if (status !== "all") conditions.push(eq(fixQueue.status, status));
+
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(fixQueue)
+    .where(and(...conditions));
+
   const jobs = await db.query.fixQueue.findMany({
-    where: and(eq(fixQueue.shopId, shop.id), isNull(fixQueue.deletedAt)),
+    where: and(...conditions),
     orderBy: [desc(fixQueue.updatedAt)],
-    limit: 100,
+    limit: PAGE_SIZE,
+    offset: (page - 1) * PAGE_SIZE,
   });
 
   const [{ pending }] = await db
@@ -43,17 +66,59 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       ),
     );
 
+  const [{ done }] = await db
+    .select({ done: count() })
+    .from(fixQueue)
+    .where(
+      and(
+        eq(fixQueue.shopId, shop.id),
+        eq(fixQueue.status, "done"),
+        isNull(fixQueue.deletedAt),
+      ),
+    );
+
+  const [{ failed }] = await db
+    .select({ failed: count() })
+    .from(fixQueue)
+    .where(
+      and(
+        eq(fixQueue.shopId, shop.id),
+        eq(fixQueue.status, "failed"),
+        isNull(fixQueue.deletedAt),
+      ),
+    );
+
+  const activity = await listShopActivity(shop.id, session.shop, 25);
+
   return {
     pending,
+    done,
+    failed,
+    total,
+    page,
+    pageSize: PAGE_SIZE,
+    status,
     jobs: jobs.map((j) => ({
       id: j.id,
       module: j.module,
       action: j.action,
       issueId: j.issueId,
       status: j.status,
-      errorMessage: j.errorMessage,
+      errorMessage: j.errorMessage ? merchantSafeError(j.errorMessage) : null,
       payloadJson: j.payloadJson,
+      createdAt: j.createdAt ? new Date(j.createdAt).toISOString() : null,
       updatedAt: j.updatedAt ? new Date(j.updatedAt).toISOString() : null,
+    })),
+    changelog: activity.map((c) => ({
+      id: c.id,
+      title: c.title,
+      detail: c.detail ? merchantSafeError(c.detail) : null,
+      before: c.before,
+      after: c.after,
+      module: c.module,
+      status: c.status,
+      kind: c.kind,
+      createdAt: c.at,
     })),
   };
 };
@@ -98,9 +163,30 @@ function toneFor(status: string) {
   return undefined;
 }
 
+function actionLabel(action?: string | null) {
+  if (!action) return "Fix";
+  if (action.startsWith("manual:")) return "Manual save";
+  if (action.startsWith("queued:")) return "Bulk queue";
+  return issueLabel(action, action);
+}
+
 export default function FixesPage() {
-  const { pending, jobs } = useLoaderData<typeof loader>();
+  const { pending, done, failed, total, page, pageSize, status, jobs, changelog } =
+    useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
+  const [params, setParams] = useSearchParams();
+
+  const setPage = (p: number) => {
+    const next = new URLSearchParams(params);
+    next.set("page", String(p));
+    setParams(next);
+  };
+  const setStatus = (s: string) => {
+    const next = new URLSearchParams(params);
+    next.set("status", s);
+    next.set("page", "1");
+    setParams(next);
+  };
 
   return (
     <Page>
@@ -110,20 +196,19 @@ export default function FixesPage() {
         <Card>
           <BlockStack gap="200">
             <Text as="h2" variant="headingMd">
-              How One-Click Fix works
+              Fix queue & history
             </Text>
             <Text as="p" tone="subdued">
-              Scans find issues across Products, SEO, Images, Collections, and
-              more. Fix one item on a module page (instant), or queue bulk fixes
-              here — they run immediately in the background. The table below
-              shows every queued, completed, and failed fix with details.
+              Every AI or manual fix appears here with module, issue, status, and
+              result. Pending jobs can be run in bulk. Failed rows show a clear
+              merchant-safe reason — never raw API keys.
             </Text>
-            <InlineStack gap="200" blockAlign="center">
-              <Badge tone={pending > 0 ? "attention" : "success"}>
-                {String(pending) + " pending"}
-              </Badge>
+            <InlineStack gap="200" wrap>
+              <Badge tone="attention">{`${pending} pending`}</Badge>
+              <Badge tone="success">{`${done} completed`}</Badge>
+              <Badge tone="critical">{`${failed} failed`}</Badge>
               <Text as="span" tone="subdued" variant="bodySm">
-                {jobs.length} recent jobs · open a module to create new fixes
+                {total} total jobs
               </Text>
             </InlineStack>
           </BlockStack>
@@ -131,12 +216,24 @@ export default function FixesPage() {
 
         {fetcher.data?.ok && (
           <Banner tone="success">
-            Processed {(fetcher.data as { queued?: number }).queued ?? 0}{" "}
-            fix job(s).
+            Processed {(fetcher.data as { queued?: number }).queued ?? 0} fix
+            job(s).
           </Banner>
         )}
 
-        <InlineStack align="end">
+        <InlineStack align="space-between" blockAlign="end" wrap>
+          <Select
+            label="Filter status"
+            labelHidden
+            options={[
+              { label: "All statuses", value: "all" },
+              { label: "Pending", value: "pending" },
+              { label: "Done", value: "done" },
+              { label: "Failed", value: "failed" },
+            ]}
+            value={status}
+            onChange={setStatus}
+          />
           <fetcher.Form method="post">
             <input type="hidden" name="intent" value="fixAll" />
             <Button
@@ -155,51 +252,117 @@ export default function FixesPage() {
             <div style={{ padding: "1.25rem" }}>
               <Text as="p" tone="subdued">
                 No fix jobs yet. Run a store scan, then open Products / SEO /
-                Images and use Fix on open issues — they will appear here.
+                Images and use Fix — they will appear here with full detail.
               </Text>
             </div>
           ) : (
-            <IndexTable
-              resourceName={{ singular: "job", plural: "jobs" }}
-              itemCount={jobs.length}
-              selectable={false}
-              headings={[
-                { title: "Module" },
-                { title: "Action" },
-                { title: "Issue" },
-                { title: "Status" },
-                { title: "Detail" },
-                { title: "Updated" },
-              ]}
-            >
-              {jobs.map((j, i) => (
-                <IndexTable.Row id={String(j.id)} key={j.id} position={i}>
-                  <IndexTable.Cell>
-                    <Text as="span" fontWeight="semibold">
-                      {j.module}
-                    </Text>
-                  </IndexTable.Cell>
-                  <IndexTable.Cell>{j.action || "—"}</IndexTable.Cell>
-                  <IndexTable.Cell>
-                    {j.issueId != null ? `#${j.issueId}` : "—"}
-                  </IndexTable.Cell>
-                  <IndexTable.Cell>
-                    <Badge tone={toneFor(j.status)}>{j.status}</Badge>
-                  </IndexTable.Cell>
-                  <IndexTable.Cell>
-                    <Text as="span" tone="subdued" variant="bodySm">
-                      {(j.errorMessage || j.payloadJson || "—").slice(0, 120)}
-                    </Text>
-                  </IndexTable.Cell>
-                  <IndexTable.Cell>
-                    {j.updatedAt
-                      ? new Date(j.updatedAt).toLocaleString()
-                      : "—"}
-                  </IndexTable.Cell>
-                </IndexTable.Row>
-              ))}
-            </IndexTable>
+            <>
+              <IndexTable
+                resourceName={{ singular: "job", plural: "jobs" }}
+                itemCount={jobs.length}
+                selectable={false}
+                headings={[
+                  { title: "Module" },
+                  { title: "What ran" },
+                  { title: "Issue #" },
+                  { title: "Status" },
+                  { title: "Result / change" },
+                  { title: "Created" },
+                  { title: "Updated" },
+                ]}
+              >
+                {jobs.map((j, i) => (
+                  <IndexTable.Row id={String(j.id)} key={j.id} position={i}>
+                    <IndexTable.Cell>
+                      <Text as="span" fontWeight="semibold">
+                        {j.module}
+                      </Text>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>{actionLabel(j.action)}</IndexTable.Cell>
+                    <IndexTable.Cell>
+                      {j.issueId != null ? `#${j.issueId}` : "—"}
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <Badge tone={toneFor(j.status)}>{j.status}</Badge>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <Text as="span" tone="subdued" variant="bodySm">
+                        {j.status === "done"
+                          ? "Applied to Shopify"
+                          : j.errorMessage || "—"}
+                      </Text>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      {j.createdAt
+                        ? new Date(j.createdAt).toLocaleString()
+                        : "—"}
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      {j.updatedAt
+                        ? new Date(j.updatedAt).toLocaleString()
+                        : "—"}
+                    </IndexTable.Cell>
+                  </IndexTable.Row>
+                ))}
+              </IndexTable>
+              {total > pageSize && (
+                <div style={{ padding: "0.85rem", display: "flex", justifyContent: "center" }}>
+                  <Pagination
+                    hasPrevious={page > 1}
+                    onPrevious={() => setPage(page - 1)}
+                    hasNext={page * pageSize < total}
+                    onNext={() => setPage(page + 1)}
+                  />
+                </div>
+              )}
+            </>
           )}
+        </Card>
+
+        <Card>
+          <BlockStack gap="300">
+            <Text as="h2" variant="headingMd">
+              Change log
+            </Text>
+            <Text as="p" tone="subdued" variant="bodySm">
+              Recent store activity related to scans, fixes, and plan changes.
+            </Text>
+            {changelog.length === 0 ? (
+              <Text as="p" tone="subdued">
+                No change log entries yet.
+              </Text>
+            ) : (
+              changelog.map((c) => (
+                <InlineStack key={c.id} align="space-between" gap="200" wrap>
+                  <BlockStack gap="050">
+                    <InlineStack gap="200" blockAlign="center">
+                      <Text as="span" fontWeight="semibold">
+                        {c.title}
+                      </Text>
+                      {c.status && (
+                        <Badge tone={toneFor(c.status)}>{c.status}</Badge>
+                      )}
+                    </InlineStack>
+                    <Text as="span" tone="subdued" variant="bodySm">
+                      {[c.module, c.detail].filter(Boolean).join(" · ") || "—"}
+                    </Text>
+                    {(c.before || c.after) && (
+                      <Text as="span" tone="subdued" variant="bodySm">
+                        {c.before ? `Before: ${c.before.slice(0, 80)}` : ""}
+                        {c.before && c.after ? " → " : ""}
+                        {c.after ? `After: ${c.after.slice(0, 80)}` : ""}
+                      </Text>
+                    )}
+                  </BlockStack>
+                  <Text as="span" tone="subdued" variant="bodySm">
+                    {c.createdAt
+                      ? new Date(c.createdAt).toLocaleString()
+                      : "—"}
+                  </Text>
+                </InlineStack>
+              ))
+            )}
+          </BlockStack>
         </Card>
       </BlockStack>
     </Page>

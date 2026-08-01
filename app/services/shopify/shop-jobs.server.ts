@@ -55,16 +55,25 @@ export async function enqueueShopScan(shopId: number) {
   await setJob(shopId, {
     jobStatus: "queued",
     jobType: "scan",
-    jobMessage: "Scan starting…",
+    jobMessage: "5% · Scan starting…",
     jobStartedAt: new Date(),
     jobFinishedAt: null,
   });
 
-  const result = await processOneShop(shopId, "scan");
+  // Do not block the HTTP request — dashboard polls progress %
+  void processOneShop(shopId, "scan").catch(async (error) => {
+    const msg = error instanceof Error ? error.message : String(error);
+    await setJob(shopId, {
+      jobStatus: "failed",
+      jobMessage: msg.slice(0, 500),
+      jobFinishedAt: new Date(),
+    });
+  });
+
   return {
     ok: true as const,
-    processed: result.ok,
-    message: result.message,
+    processed: false,
+    message: "scan_started",
   };
 }
 

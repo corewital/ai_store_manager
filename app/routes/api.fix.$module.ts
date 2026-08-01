@@ -18,10 +18,22 @@ import {
 import {
   formatCaughtErrorAsync,
   isShopifyForbiddenError,
+  merchantSafeError,
   shouldRethrowResponse,
 } from "../lib/errors.server";
 import { invalidateShopSessions } from "../services/shopify/turso-session-storage.server";
 
+function safeFixResult<T extends { ok: boolean; error?: string | null; skipMessage?: string | null }>(
+  result: T,
+): T {
+  return {
+    ...result,
+    error: result.error ? merchantSafeError(result.error) : result.error,
+    skipMessage: result.skipMessage
+      ? merchantSafeError(result.skipMessage)
+      : result.skipMessage,
+  };
+}
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   if (request.method !== "POST") {
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
@@ -72,7 +84,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         durationMs: Date.now() - started,
         errorMessage: result.ok ? null : (result.error ?? result.skipMessage ?? "preview_failed"),
       });
-      return json(result, { status: result.ok ? 200 : 422 });
+      return json(safeFixResult(result), { status: result.ok ? 200 : 422 });
     }
 
     if (manualValue !== null && ids.length === 1) {
@@ -94,7 +106,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         durationMs: Date.now() - started,
         errorMessage: result.ok ? null : (result.error ?? "fix_failed"),
       });
-      return json(result, { status: result.ok ? 200 : 422 });
+      return json(safeFixResult(result), { status: result.ok ? 200 : 422 });
     }
 
     // Single Fix = realtime; bulk (2+) = background cron
@@ -110,15 +122,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         durationMs: Date.now() - started,
         errorMessage: result.ok ? null : (result.error ?? "fix_failed"),
       });
+      const safe = safeFixResult(result);
       return json(
         {
-          ok: result.ok,
-          succeeded: result.ok ? 1 : 0,
-          failed: result.ok ? 0 : 1,
-          error: result.error || result.skipMessage,
-          skipMessage: result.skipMessage,
+          ok: safe.ok,
+          succeeded: safe.ok ? 1 : 0,
+          failed: safe.ok ? 0 : 1,
+          error: safe.error || safe.skipMessage,
+          skipMessage: safe.skipMessage,
         },
-        { status: result.ok ? 200 : 422 },
+        { status: safe.ok ? 200 : 422 },
       );
     }
 
@@ -132,7 +145,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
 
     if (!result.ok) {
-      return json({ ok: false, error: result.error }, { status: 409 });
+      return json(
+        { ok: false, error: merchantSafeError(result.error) },
+        { status: 409 },
+      );
     }
 
     return json({

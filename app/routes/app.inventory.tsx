@@ -30,6 +30,7 @@ export default function InventoryPage() {
       shopDomain={shopDomain}
       fieldLabel="Note"
       fixLabel="Mark reviewed"
+      showImage
       lastScannedAt={lastScannedAt}
       modules={modules}
     />

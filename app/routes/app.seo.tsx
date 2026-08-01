@@ -30,6 +30,7 @@ export default function SeoPage() {
       shopDomain={shopDomain}
       field="seoTitle"
       fieldLabel="SEO title"
+      showImage
       lastScannedAt={lastScannedAt}
       modules={modules}
     />

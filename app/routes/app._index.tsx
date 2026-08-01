@@ -1,19 +1,11 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { useLoaderData, useFetcher, useRevalidator } from "@remix-run/react";
 import { useEffect } from "react";
 import {
   Page,
-  Layout,
-  Card,
-  Text,
-  BlockStack,
-  InlineStack,
-  ProgressBar,
   Banner,
-  Badge,
   Button,
-  InlineGrid,
-  Divider,
+  Text,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { and, count, eq, isNull } from "drizzle-orm";
@@ -52,18 +44,41 @@ import { getEffectiveScanModules } from "../services/shopify/effective-modules.s
 import type { AppModuleVisibility } from "../services/admin/module-visibility";
 import { getCatalogCounts } from "../services/shopify/catalog.server";
 import { listShopActivity } from "../services/shopify/shop-activity.server";
+import { issueLabel } from "../lib/issue-labels";
+import dashboardStyles from "../styles/dashboard.css?url";
 
-const CATEGORIES: { key: HealthCategory; label: string; href: string }[] = [
-  { key: "products", label: "Products", href: "/app/products" },
-  { key: "seo", label: "SEO", href: "/app/seo" },
-  { key: "images", label: "Images", href: "/app/images" },
-  { key: "inventory", label: "Inventory", href: "/app/inventory" },
-  { key: "collections", label: "Collections", href: "/app/collections" },
-  { key: "navigation", label: "Navigation", href: "/app/navigation" },
-  { key: "theme", label: "Theme", href: "/app/theme" },
-  { key: "apps", label: "Apps", href: "/app/apps" },
-  { key: "performance", label: "Performance", href: "/app/performance" },
+export const links: LinksFunction = () => [
+  { rel: "stylesheet", href: dashboardStyles },
 ];
+
+const CATEGORIES: {
+  key: HealthCategory;
+  label: string;
+  href: string;
+  icon: string;
+}[] = [
+  { key: "products", label: "Product Health", href: "/app/products", icon: "/images/Products.png" },
+  { key: "seo", label: "SEO", href: "/app/seo", icon: "/images/SEO.png" },
+  { key: "images", label: "Images", href: "/app/images", icon: "/images/Images.png" },
+  { key: "inventory", label: "Inventory", href: "/app/inventory", icon: "/images/Inventory.png" },
+  { key: "performance", label: "Performance", href: "/app/performance", icon: "/images/Performance.png" },
+  { key: "collections", label: "Collections", href: "/app/collections", icon: "/images/Collections.png" },
+];
+
+function Spark({ color = "#fff" }: { color?: string }) {
+  return (
+    <svg className="dashSpark" width="88" height="28" viewBox="0 0 88 28" aria-hidden>
+      <polyline
+        fill="none"
+        stroke={color}
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points="0,22 12,18 22,20 34,12 46,15 58,8 70,11 88,4"
+      />
+    </svg>
+  );
+}
 
 async function openCount(
   table:
@@ -167,13 +182,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 };
 
-function statusFor(score: number, open: number) {
-  if (open === 0 && score >= 90) return { label: "Healthy", tone: "success" as const };
-  if (open === 0) return { label: "OK", tone: "info" as const };
-  if (score < 60) return { label: `${open} Problems`, tone: "critical" as const };
-  return { label: `${open} Problems`, tone: "warning" as const };
-}
-
 function gradeLabel(overall: number) {
   if (overall >= 90) return "Excellent Store";
   if (overall >= 75) return "Good Store";
@@ -232,15 +240,36 @@ export default function Index() {
     return { total: Math.max(open, 0), open };
   }
 
+  const insights = [
+    issueCounts.products > 0
+      ? `${issueLabel("missing_description")} · ${issueCounts.products} product issue(s)`
+      : null,
+    issueCounts.images > 0
+      ? `${issueLabel("no_media")} / image issues · ${issueCounts.images}`
+      : null,
+    issueCounts.seo > 0 ? `SEO issues · ${issueCounts.seo}` : null,
+    pendingFixes > 0 ? `Pending AI fixes · ${pendingFixes}` : null,
+    totalOpen === 0 ? "Store looks healthy — run a scan to refresh scores." : null,
+  ].filter(Boolean) as string[];
+
+  const topFixCount = Math.max(
+    issueCounts.products,
+    issueCounts.seo,
+    issueCounts.images,
+    pendingFixes,
+  );
+
   return (
-    <Page>
+    <Page fullWidth>
       <TitleBar title="Dashboard" />
-      <BlockStack gap="500">
+      <div className="dash">
         {scan.data?.ok && "queued" in scan.data && scan.data.queued && (
           <Banner tone="success">
-            {(scan.data as { message?: string }).message === "scan_done"
-              ? "Scan completed. Refresh to see updated issue counts."
-              : "Scan finished processing. Refresh if counts look stale."}
+            {(scan.data as { message?: string }).message === "scan_started"
+              ? "Scan started — watch the progress bar below."
+              : (scan.data as { message?: string }).message === "scan_done"
+                ? "Scan completed. Scores and issue counts updated."
+                : "Scan finished. Refresh if counts look stale."}
           </Banner>
         )}
         {scan.data && !scan.data.ok && "error" in scan.data && scan.data.error && (
@@ -256,273 +285,163 @@ export default function Index() {
             ) : null}
           </Banner>
         )}
-        {job.busy && (
-          <Card>
-            <BlockStack gap="300">
-              <InlineStack align="space-between">
-                <Text as="h2" variant="headingMd">
-                  {job.type === "scan" ? "Scan in progress" : "Job running"}
-                </Text>
-                <Badge tone="attention">{`${scanProgress}%`}</Badge>
-              </InlineStack>
-              <ProgressBar progress={scanProgress} size="small" />
-              <Text as="p" tone="subdued" variant="bodySm">
-                {job.message || job.status}
-              </Text>
-            </BlockStack>
-          </Card>
-        )}
-        {!job.busy && job.status === "completed" && job.message && (
-          <Banner tone="success">{job.message}</Banner>
-        )}
         {job.status === "failed" && job.message && (
           <Banner tone="critical">Job failed: {job.message}</Banner>
         )}
 
-        <Banner tone="info">
-          Fix missing product data, SEO, images, and speed issues to improve
-          conversions. Queue a scan, then open modules or One-Click Fix to clear
-          problems.
-        </Banner>
-
-        <Card>
-          <InlineStack gap="600" align="space-between" blockAlign="center" wrap>
-            <InlineStack gap="500" blockAlign="center">
-              <ScoreGauge value={score.overall} size={140} />
-              <BlockStack gap="200">
-                <Text as="h1" variant="headingLg">
-                  Store Health
-                </Text>
-                <Text as="p" variant="headingSm">
-                  {gradeLabel(score.overall)}
-                </Text>
-                <Text as="p" tone="subdued">
-                  {shopDomain} · {PLANS[plan].name} ·{" "}
-                  {catalog.products.toLocaleString()} products
-                </Text>
-                <Text as="p" variant="bodySm" tone="subdued">
-                  {lastScannedAt
-                    ? `Last scan ${new Date(lastScannedAt).toLocaleString()}`
-                    : "No scan yet — queue one now"}
-                </Text>
-              </BlockStack>
-            </InlineStack>
-            <InlineStack gap="200">
-              <scan.Form method="post">
-                <Button
-                  submit
-                  variant="primary"
-                  loading={scanning}
-                  disabled={job.busy}
-                  size="large"
-                >
-                  {job.busy
-                    ? `Scanning… ${scanProgress}%`
-                    : scanning
-                      ? "Starting…"
-                      : "Scan now"}
-                </Button>
-              </scan.Form>
-              <Button url="/app/fixes" size="large" disabled={job.busy}>
-                One-Click Fix
-              </Button>
-            </InlineStack>
-          </InlineStack>
-        </Card>
-
-        <InlineGrid columns={{ xs: 1, sm: 2, md: 4 }} gap="300">
-          <Card>
-            <BlockStack gap="100">
-              <Text as="p" tone="subdued" variant="bodySm">
-                Open issues
-              </Text>
-              <Text as="p" variant="heading2xl">
-                {totalOpen}
-              </Text>
-            </BlockStack>
-          </Card>
-          <Card>
-            <BlockStack gap="100">
-              <Text as="p" tone="subdued" variant="bodySm">
-                Pending fixes
-              </Text>
-              <Text as="p" variant="heading2xl">
-                {pendingFixes}
-              </Text>
-            </BlockStack>
-          </Card>
-          <Card>
-            <BlockStack gap="100">
-              <Text as="p" tone="subdued" variant="bodySm">
-                Products
-              </Text>
-              <Text as="p" variant="heading2xl">
-                {catalog.products}
-              </Text>
-            </BlockStack>
-          </Card>
-          <Card>
-            <BlockStack gap="100">
-              <Text as="p" tone="subdued" variant="bodySm">
-                Plan
-              </Text>
-              <Text as="p" variant="headingLg">
-                {PLANS[plan].name}
-              </Text>
-              <Button url="/app/settings/billing" size="slim">
-                Upgrade plan
-              </Button>
-            </BlockStack>
-          </Card>
-        </InlineGrid>
-
-        <Card>
-          <BlockStack gap="300">
-            <Text as="h2" variant="headingMd">
-              Open issues by module
+        {job.busy && (
+          <div className="dashProgress">
+            <div className="dashProgressHead">
+              <span>{job.type === "scan" ? "Scan in progress" : "Job running"}</span>
+              <span>{scanProgress}%</span>
+            </div>
+            <div className="dashBar">
+              <span style={{ width: `${scanProgress}%`, background: "#ea580c" }} />
+            </div>
+            <Text as="p" variant="bodySm" tone="subdued">
+              {job.message || job.status}
             </Text>
-            <BlockStack gap="200">
-              {visibleCategories.map(({ key, label }) => {
-                const open =
-                  key in issueCounts
-                    ? issueCounts[key as keyof typeof issueCounts]
-                    : 0;
-                const max = Math.max(totalOpen, 1);
-                const pct = Math.round((open / max) * 100);
+          </div>
+        )}
+
+        <section className="dashHero">
+          <ScoreGauge value={score.overall} size={132} />
+          <div className="dashHeroCopy">
+            <h1>Store Health</h1>
+            <p className="dashHeroMeta">
+              {gradeLabel(score.overall)} · {shopDomain} · {PLANS[plan].name} ·{" "}
+              {catalog.products.toLocaleString()} products
+            </p>
+            <p className="dashHeroMeta">
+              {lastScannedAt
+                ? `Last scan ${new Date(lastScannedAt).toLocaleString()}`
+                : "No scan yet — queue one now"}
+            </p>
+          </div>
+          <div className="dashHeroActions">
+            <scan.Form method="post">
+              <button
+                type="submit"
+                className="dashBtn dashBtnPrimary"
+                disabled={job.busy || scanning}
+              >
+                {job.busy
+                  ? `Scanning… ${scanProgress}%`
+                  : scanning
+                    ? "Starting…"
+                    : "Scan Now"}
+              </button>
+            </scan.Form>
+            <a className="dashBtn dashBtnAccent" href="/app/assistant">
+              AI Analysis
+            </a>
+          </div>
+        </section>
+
+        <section className="dashMetrics">
+          <div className="dashMetric dashMetricMint">
+            <div>
+              <div className="dashMetricLabel">Inventory · Low stock</div>
+              <div className="dashMetricValue">{issueCounts.inventory}</div>
+              <div className="dashMetricHint">Open inventory flags</div>
+            </div>
+            <Spark color="#14532d" />
+          </div>
+          <div className="dashMetric dashMetricGreen">
+            <div>
+              <div className="dashMetricLabel">SEO score</div>
+              <div className="dashMetricValue">{score.seo}</div>
+              <div className="dashMetricHint">Trending metric</div>
+            </div>
+            <Spark />
+          </div>
+          <div className="dashMetric dashMetricBlue">
+            <div>
+              <div className="dashMetricLabel">Open issues</div>
+              <div className="dashMetricValue">{totalOpen}</div>
+              <div className="dashMetricHint">
+                {pendingFixes} pending fixes · {PLANS[plan].name}
+              </div>
+            </div>
+            <Spark />
+          </div>
+        </section>
+
+        <section className="dashMain">
+          <div className="dashPanel">
+            <h2 className="dashPanelTitle">Category Health</h2>
+            <div className="dashCats">
+              {visibleCategories.map(({ key, label, href, icon }) => {
+                const { total, open } = moduleTotals(key);
+                const clearPct =
+                  total > 0
+                    ? Math.round(((total - Math.min(open, total)) / total) * 100)
+                    : score[key];
                 return (
-                  <BlockStack key={key} gap="100">
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodySm">
-                        {label}
-                      </Text>
-                      <Text as="span" variant="bodySm" tone="subdued">
-                        {open}
-                      </Text>
-                    </InlineStack>
-                    <ProgressBar
-                      progress={pct}
-                      size="small"
-                      tone={open > 0 ? "critical" : "primary"}
-                    />
-                  </BlockStack>
+                  <a key={key} href={href} className="dashCat">
+                    <img src={icon} alt="" className="dashCatIcon" />
+                    <p className="dashCatName">{label}</p>
+                    <p className="dashCatScore">{score[key]}</p>
+                    <p className="dashCatClear">{clearPct}% clear</p>
+                    <div className="dashBar">
+                      <span style={{ width: `${clearPct}%` }} />
+                    </div>
+                  </a>
                 );
               })}
-            </BlockStack>
-          </BlockStack>
-        </Card>
+              {visibleCategories.length === 0 && (
+                <Text as="p" tone="subdued">
+                  No modules enabled for your plan.
+                </Text>
+              )}
+            </div>
+          </div>
 
-        <Layout>
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="400">
-                <InlineStack align="space-between">
-                  <Text as="h2" variant="headingMd">
-                    Module health
-                  </Text>
-                  {modules.health !== false && (
-                    <Button url="/app/health">View all</Button>
-                  )}
-                </InlineStack>
-                <InlineGrid columns={{ xs: 1, sm: 2, md: 3 }} gap="300">
-                  {visibleCategories.map(({ key, label, href }) => {
-                    const { total, open } = moduleTotals(key);
-                    const healthyPct =
-                      total > 0
-                        ? Math.round(((total - Math.min(open, total)) / total) * 100)
-                        : score[key];
-                    const st = statusFor(score[key], open);
-                    return (
-                      <Card key={key}>
-                        <BlockStack gap="200">
-                          <InlineStack align="space-between">
-                            <Text as="h3" variant="headingSm">
-                              {label}
-                            </Text>
-                            <Badge tone={st.tone}>{st.label}</Badge>
-                          </InlineStack>
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            {total > 0
-                              ? `${total.toLocaleString()} total · ${open.toLocaleString()} problems`
-                              : `${open.toLocaleString()} problems`}
-                          </Text>
-                          <Text as="p" variant="headingLg">
-                            Score {score[key]}
-                          </Text>
-                          <ProgressBar
-                            progress={healthyPct}
-                            size="small"
-                            tone={open > 0 ? "critical" : "primary"}
-                          />
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            {healthyPct}% clear
-                          </Text>
-                          <Button url={href} size="slim" fullWidth>
-                            Review &amp; fix
-                          </Button>
-                        </BlockStack>
-                      </Card>
-                    );
-                  })}
-                </InlineGrid>
-                {visibleCategories.length === 0 && (
-                  <Text as="p" tone="subdued">
-                    No health modules are enabled. Ask your admin to turn modules
-                    on under Admin → App modules.
-                  </Text>
-                )}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
+          <div className="dashSide">
+            <div className="dashPanel">
+              <h2 className="dashPanelTitle">Reports · Insights</h2>
+              <ul className="dashInsight">
+                {insights.slice(0, 5).map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+                {activity.slice(0, 2).map((item) => (
+                  <li key={item.id}>{item.title}</li>
+                ))}
+              </ul>
+              <div style={{ marginTop: "0.85rem" }}>
+                <Button url="/app/reports" size="slim">
+                  View reports
+                </Button>
+              </div>
+            </div>
 
-          <Layout.Section variant="oneThird">
-            <Card>
-              <BlockStack gap="300">
-                <InlineStack align="space-between" blockAlign="center">
-                  <Text as="h2" variant="headingMd">
-                    Recent activity
-                  </Text>
-                  <Button url="/app/fixes" size="slim">
-                    Fixes
-                  </Button>
-                </InlineStack>
-                {activity.length === 0 ? (
-                  <Text as="p" tone="subdued">
-                    No activity yet. Run a scan or apply a fix to see history here.
-                  </Text>
-                ) : (
-                  activity.map((item) => (
-                    <BlockStack key={item.id} gap="100">
-                      <Button url={item.href} variant="plain" textAlign="left">
-                        {item.title}
-                      </Button>
-                      {item.detail && (
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          {item.detail}
-                        </Text>
-                      )}
-                      {(item.before || item.after) && (
-                        <Text as="p" variant="bodySm">
-                          {item.before ? `Before: ${item.before.slice(0, 80)}` : ""}
-                          {item.before && item.after ? " → " : ""}
-                          {item.after ? `After: ${item.after.slice(0, 80)}` : ""}
-                        </Text>
-                      )}
-                      <InlineStack gap="200">
-                        {item.module && <Badge>{item.module}</Badge>}
-                        {item.status && <Badge tone="info">{item.status}</Badge>}
-                        <Text as="span" variant="bodySm" tone="subdued">
-                          {item.at ? new Date(item.at).toLocaleString() : ""}
-                        </Text>
-                      </InlineStack>
-                      <Divider />
-                    </BlockStack>
-                  ))
-                )}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-        </Layout>
-      </BlockStack>
+            <div className="dashPanel">
+              <h2 className="dashPanelTitle">AI Assistant</h2>
+              <div className="dashRec">
+                <h3>
+                  {topFixCount > 0
+                    ? `Optimize ${topFixCount} issue${topFixCount === 1 ? "" : "s"}`
+                    : "Store looks healthy"}
+                </h3>
+                <p>
+                  {pendingFixes > 0
+                    ? `${pendingFixes} fix(es) queued. Review One-Click Fix or apply AI drafts in each module.`
+                    : totalOpen > 0
+                      ? "Open modules to preview AI fixes, then save to Shopify."
+                      : "Run Scan Now to refresh health, or ask the assistant for next steps."}
+                </p>
+                <a
+                  className="dashBtn dashBtnPrimary"
+                  href={pendingFixes > 0 || totalOpen > 0 ? "/app/fixes" : "/app/assistant"}
+                  style={{ width: "100%" }}
+                >
+                  {pendingFixes > 0 || totalOpen > 0 ? "Apply fixes" : "Open AI Assistant"}
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </Page>
   );
 }

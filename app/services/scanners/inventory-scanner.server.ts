@@ -5,6 +5,46 @@ import { inventoryFlags } from "../../db/schema";
 
 type Admin = AdminApiContext;
 
+async function upsertFlag(
+  shopId: number,
+  resourceId: string,
+  issueCode: string,
+  title: string,
+  severity: string,
+  details: Record<string, unknown>,
+) {
+  const existing = await db.query.inventoryFlags.findFirst({
+    where: and(
+      eq(inventoryFlags.shopId, shopId),
+      eq(inventoryFlags.resourceId, resourceId),
+      eq(inventoryFlags.issueCode, issueCode),
+      eq(inventoryFlags.status, "open"),
+      isNull(inventoryFlags.deletedAt),
+    ),
+  });
+  if (existing) {
+    await db
+      .update(inventoryFlags)
+      .set({
+        detailsJson: JSON.stringify(details),
+        title,
+        severity,
+        updatedAt: new Date(),
+      })
+      .where(eq(inventoryFlags.id, existing.id));
+    return;
+  }
+  await db.insert(inventoryFlags).values({
+    shopId,
+    resourceId,
+    resourceType: "variant",
+    issueCode,
+    title,
+    severity,
+    detailsJson: JSON.stringify(details),
+  });
+}
+
 export async function scanInventory(
   shopId: number,
   admin: Admin,
@@ -18,7 +58,11 @@ export async function scanInventory(
         nodes {
           id sku title
           inventoryQuantity
-          product { id title }
+          product {
+            id
+            title
+            featuredImage { url }
+          }
         }
       }
     }`,
@@ -29,47 +73,32 @@ export async function scanInventory(
 
   for (const v of connection?.nodes ?? []) {
     const qty = v.inventoryQuantity ?? 0;
+    const details = {
+      sku: v.sku,
+      qty,
+      productTitle: v.product?.title ?? v.title,
+      title: v.product?.title ?? v.title,
+      imageUrl: v.product?.featuredImage?.url ?? null,
+      productId: v.product?.id ?? null,
+    };
     if (qty <= 0) {
-      const existing = await db.query.inventoryFlags.findFirst({
-        where: and(
-          eq(inventoryFlags.shopId, shopId),
-          eq(inventoryFlags.resourceId, v.id),
-          eq(inventoryFlags.issueCode, "out_of_stock"),
-          eq(inventoryFlags.status, "open"),
-          isNull(inventoryFlags.deletedAt),
-        ),
-      });
-      if (!existing) {
-        await db.insert(inventoryFlags).values({
-          shopId,
-          resourceId: v.id,
-          resourceType: "variant",
-          issueCode: "out_of_stock",
-          title: `Out of stock — ${v.product?.title ?? v.title}`,
-          severity: "high",
-          detailsJson: JSON.stringify({ sku: v.sku, qty }),
-        });
-      }
+      await upsertFlag(
+        shopId,
+        v.id,
+        "out_of_stock",
+        `Out of stock — ${v.product?.title ?? v.title}`,
+        "high",
+        details,
+      );
     } else if (qty > 0 && qty <= 5) {
-      const existing = await db.query.inventoryFlags.findFirst({
-        where: and(
-          eq(inventoryFlags.shopId, shopId),
-          eq(inventoryFlags.resourceId, v.id),
-          eq(inventoryFlags.issueCode, "low_stock"),
-          eq(inventoryFlags.status, "open"),
-          isNull(inventoryFlags.deletedAt),
-        ),
-      });
-      if (!existing) {
-        await db.insert(inventoryFlags).values({
-          shopId,
-          resourceId: v.id,
-          resourceType: "variant",
-          issueCode: "low_stock",
-          title: `Low stock — ${v.product?.title ?? v.title}`,
-          detailsJson: JSON.stringify({ sku: v.sku, qty }),
-        });
-      }
+      await upsertFlag(
+        shopId,
+        v.id,
+        "low_stock",
+        `Low stock — ${v.product?.title ?? v.title}`,
+        "medium",
+        details,
+      );
     }
   }
 

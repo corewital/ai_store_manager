@@ -57,7 +57,10 @@ export async function scanImages(
             title: `Missing alt text — ${product.title}`,
             detailsJson: JSON.stringify({
               productId: product.id,
+              productTitle: product.title,
+              title: product.title,
               url: media.image?.url ?? null,
+              imageUrl: media.image?.url ?? null,
               width: media.image?.width ?? null,
               height: media.image?.height ?? null,
             }),
@@ -85,7 +88,10 @@ export async function scanImages(
             title: `Oversized image — ${product.title}`,
             detailsJson: JSON.stringify({
               productId: product.id,
+              productTitle: product.title,
+              title: product.title,
               url: media.image?.url ?? null,
+              imageUrl: media.image?.url ?? null,
               width: w,
               height: h,
             }),

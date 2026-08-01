@@ -123,6 +123,7 @@ async function queryIssues(
         (details.title as string) ??
         null,
       sku: (details.sku as string) ?? null,
+      productId: (details.productId as string) ?? null,
       currentValue:
         (details.currentValue as string) ?? (details.current as string) ?? null,
       details,

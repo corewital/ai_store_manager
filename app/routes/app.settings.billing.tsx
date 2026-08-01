@@ -1,17 +1,14 @@
-﻿import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+﻿import type { ActionFunctionArgs, LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { useLoaderData, useFetcher, useSearchParams } from "@remix-run/react";
 import {
   Page,
-  Card,
   Text,
   BlockStack,
   Button,
   Banner,
   InlineStack,
   Badge,
-  List,
-  Divider,
-  Layout,
+  ProgressBar,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { useEffect } from "react";
@@ -28,6 +25,11 @@ import {
   getPlanUsage,
   getPlanLimit,
 } from "../services/shopify/plan-gate.server";
+import billingCss from "../styles/billing.css?url";
+
+export const links: LinksFunction = () => [
+  { rel: "stylesheet", href: billingCss },
+];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
@@ -36,7 +38,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const confirmed = url.searchParams.get("confirmed");
   if (confirmed && confirmed in PLANS && confirmed !== "enterprise") {
-    // Merchant returned from Shopify charge approval
     await activateConfirmedPlan(shop.id, confirmed as PlanSlug);
   }
 
@@ -66,7 +67,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { ok: false as const, error: "Contact support for Enterprise." };
   }
 
-  // Prefer the live request origin (current tunnel / domain) — not a stale .env tunnel
   const appUrl =
     new URL(request.url).origin ||
     process.env.SHOPIFY_APP_URL ||
@@ -80,13 +80,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   );
 
   if (!result.ok) return { ok: false as const, error: result.error };
-  // Return URL to client — fetcher cannot navigate top-level to Shopify approve page
   return {
     ok: true as const,
     plan: result.plan,
     confirmationUrl: result.confirmationUrl,
   };
 };
+
+function usagePct(used: number, limit: number | null) {
+  if (limit == null || limit <= 0) return 0;
+  return Math.min(100, Math.round((used / limit) * 100));
+}
 
 export default function SettingsBillingPage() {
   const { plan: currentPlan, shopDomain, usage, limits, billingTest } =
@@ -96,16 +100,19 @@ export default function SettingsBillingPage() {
   const confirmed = params.get("confirmed");
   const need = params.get("need");
   const activePlan = (currentPlan in PLANS ? currentPlan : "free") as PlanSlug;
+  const curPrice = Math.max(PLANS[activePlan].priceCents, 0);
 
-  // Open Shopify charge approval outside the embedded iframe
   useEffect(() => {
-    const url = fetcher.data && "confirmationUrl" in fetcher.data
-      ? fetcher.data.confirmationUrl
-      : null;
+    const url =
+      fetcher.data && "confirmationUrl" in fetcher.data
+        ? fetcher.data.confirmationUrl
+        : null;
     if (fetcher.data?.ok && url) {
       window.open(url, "_top");
     }
   }, [fetcher.data]);
+
+  const slugs = Object.keys(PLANS) as PlanSlug[];
 
   return (
     <Page>
@@ -130,9 +137,8 @@ export default function SettingsBillingPage() {
             </p>
             <p>{(fetcher.data as { error?: string }).error}</p>
             <p>
-              Quick fix: Partners → CorePilot AI → <strong>Distribution</strong>{" "}
-              → select <strong>Public distribution</strong> (no App Store submit
-              needed). Then retry Upgrade. For demos, use Admin → Installs →
+              Quick fix: Partners → CorePilot AI → Distribution → Public
+              distribution. Then retry Upgrade. For demos, use Admin → Installs →
               Plan override.
             </p>
           </Banner>
@@ -149,89 +155,128 @@ export default function SettingsBillingPage() {
         {billingTest && (
           <Banner tone="info">
             Dev mode: upgrades create a <strong>test</strong> charge (no real
-            money). Approve it on the Shopify charge page to activate the plan.
+            money).
           </Banner>
         )}
 
-        <Card>
-          <BlockStack gap="200">
-            <InlineStack align="space-between" blockAlign="center">
-              <Text as="h2" variant="headingMd">
-                Current plan
+        <div className="cp-billing-hero">
+          <div className="cp-billing-hero__glow" aria-hidden />
+          <div className="cp-billing-hero__content">
+            <Text as="p" variant="bodySm" tone="subdued">
+              Billed through Shopify · {shopDomain}
+            </Text>
+            <InlineStack gap="300" blockAlign="center" wrap>
+              <Text as="h2" variant="headingXl">
+                {PLANS[activePlan].name}
               </Text>
-              <Badge tone="success">{PLANS[activePlan].name}</Badge>
+              <Badge tone="success">Current plan</Badge>
             </InlineStack>
-            <Text as="p" tone="subdued">
-              Billed through Shopify for {shopDomain}.
+            <Text as="p" variant="headingLg">
+              {formatPrice(PLANS[activePlan].priceCents)}
             </Text>
-            <Text as="p" variant="bodySm">
-              Usage — AI fixes: {usage.aiFixesUsed}
-              {limits.aiLimit != null ? ` / ${limits.aiLimit}` : ""} · Manual
-              scans: {usage.manualScansUsed}
-              {limits.scanLimit != null ? ` / ${limits.scanLimit}` : ""} ·
-              Product cap: {limits.productLimit ?? "Unlimited"}
-            </Text>
-          </BlockStack>
-        </Card>
+            <div className="cp-billing-usage">
+              <div>
+                <InlineStack align="space-between">
+                  <Text as="span" variant="bodySm">
+                    AI fixes
+                  </Text>
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    {usage.aiFixesUsed}
+                    {limits.aiLimit != null ? ` / ${limits.aiLimit}` : " · Unlimited"}
+                  </Text>
+                </InlineStack>
+                <ProgressBar
+                  progress={usagePct(usage.aiFixesUsed, limits.aiLimit)}
+                  size="small"
+                />
+              </div>
+              <div>
+                <InlineStack align="space-between">
+                  <Text as="span" variant="bodySm">
+                    Manual scans
+                  </Text>
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    {usage.manualScansUsed}
+                    {limits.scanLimit != null
+                      ? ` / ${limits.scanLimit}`
+                      : " · Unlimited"}
+                  </Text>
+                </InlineStack>
+                <ProgressBar
+                  progress={usagePct(usage.manualScansUsed, limits.scanLimit)}
+                  size="small"
+                />
+              </div>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Product cap: {limits.productLimit ?? "Unlimited"}
+              </Text>
+            </div>
+          </div>
+        </div>
 
-        <Layout>
-          {(Object.keys(PLANS) as PlanSlug[]).map((slug) => {
+        <div className="cp-billing-grid">
+          {slugs.map((slug) => {
             const p = PLANS[slug];
             const isCurrent = slug === activePlan;
             const isEnterprise = p.priceCents < 0;
-            const curPrice = Math.max(PLANS[activePlan].priceCents, 0);
             const isUpgrade = !isEnterprise && p.priceCents > curPrice;
+            const featured = slug === "business" || slug === "enterprise";
             return (
-              <Layout.Section key={slug} variant="oneHalf">
-                <Card>
-                  <BlockStack gap="300">
-                    <InlineStack align="space-between" blockAlign="center">
-                      <Text as="h3" variant="headingMd">
-                        {p.name}
-                      </Text>
-                      {isCurrent && <Badge tone="success">Current</Badge>}
-                    </InlineStack>
-                    <Text as="p" variant="headingLg">
-                      {formatPrice(p.priceCents)}
+              <div
+                key={slug}
+                className={`cp-plan-card${isCurrent ? " is-current" : ""}${
+                  featured ? " is-featured" : ""
+                }${isEnterprise ? " is-enterprise" : ""}`}
+              >
+                <div className="cp-plan-card__face">
+                  <InlineStack align="space-between" blockAlign="start">
+                    <Text as="h3" variant="headingMd">
+                      {p.name}
                     </Text>
-                    <Text as="p" tone="subdued">
-                      {p.productLimit
-                        ? `Up to ${p.productLimit} products · ${p.collectionLimit} collections`
-                        : "Unlimited products & collections"}
-                    </Text>
-                    <Divider />
-                    <List type="bullet">
-                      {p.features.map((f) => (
-                        <List.Item key={f}>{f}</List.Item>
-                      ))}
-                    </List>
-                    {isCurrent ? (
-                      <Button disabled fullWidth>
-                        Current plan
-                      </Button>
-                    ) : isEnterprise ? (
-                      <Button url="/app/support" fullWidth>
-                        Contact support
-                      </Button>
-                    ) : (
-                      <fetcher.Form method="post">
-                        <input type="hidden" name="plan" value={slug} />
-                        <Button
-                          submit
-                          fullWidth
-                          variant={isUpgrade ? "primary" : "secondary"}
-                          loading={fetcher.state !== "idle"}
-                        >
-                          {isUpgrade ? "Upgrade" : "Switch"} to {p.name}
-                        </Button>
-                      </fetcher.Form>
+                    {isCurrent && <Badge tone="success">Current</Badge>}
+                    {featured && !isCurrent && (
+                      <Badge tone="info">
+                        {isEnterprise ? "Custom" : "Popular"}
+                      </Badge>
                     )}
-                  </BlockStack>
-                </Card>
-              </Layout.Section>
+                  </InlineStack>
+                  <p className="cp-plan-card__price">{formatPrice(p.priceCents)}</p>
+                  <p className="cp-plan-card__meta">
+                    {p.productLimit
+                      ? `Up to ${p.productLimit} products · ${p.collectionLimit} collections`
+                      : "Unlimited products & collections"}
+                  </p>
+                  <ul className="cp-plan-card__features">
+                    {p.features.map((f) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                  </ul>
+                  {isCurrent ? (
+                    <Button disabled fullWidth>
+                      Current plan
+                    </Button>
+                  ) : isEnterprise ? (
+                    <Button url="/app/support" fullWidth variant="primary">
+                      Contact for Enterprise
+                    </Button>
+                  ) : (
+                    <fetcher.Form method="post">
+                      <input type="hidden" name="plan" value={slug} />
+                      <Button
+                        submit
+                        fullWidth
+                        variant={isUpgrade ? "primary" : "secondary"}
+                        loading={fetcher.state !== "idle"}
+                      >
+                        {isUpgrade ? "Upgrade" : "Switch"} to {p.name}
+                      </Button>
+                    </fetcher.Form>
+                  )}
+                </div>
+              </div>
             );
           })}
-        </Layout>
+        </div>
       </BlockStack>
     </Page>
   );

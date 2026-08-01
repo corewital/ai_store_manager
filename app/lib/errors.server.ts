@@ -4,7 +4,7 @@ export function formatCaughtError(error: unknown): string {
   if (shopifyForbidden) return shopifyForbidden;
 
   if (error instanceof Error) {
-    return (error.message || error.name || "Error").slice(0, 500);
+    return merchantSafeError(error.message || error.name || "Error");
   }
   if (typeof Response !== "undefined" && error instanceof Response) {
     if (error.status === 403) {
@@ -48,6 +48,29 @@ export function formatCaughtError(error: unknown): string {
 
 export const SHOPIFY_403_HINT =
   "Shopify blocked this action (session needs refresh). Close this app tab, reopen CorePilot AI from Shopify Admin, then try AI Fix again.";
+
+/** Never show raw backend / provider secrets to merchants. */
+export function merchantSafeError(message: string | null | undefined): string {
+  const raw = (message || "").trim();
+  if (!raw) return "Something went wrong. Please try again.";
+  if (
+    /gemini|api key|not configured|ai.?provider|openai|anthropic|openrouter|admin → ai/i.test(
+      raw,
+    )
+  ) {
+    return "AI is temporarily unavailable. Please try again later or contact support.";
+  }
+  if (/quota|rate.?limit|429/i.test(raw)) {
+    return "AI usage limit reached for now. Try again later or upgrade your plan.";
+  }
+  if (/TURSO|DATABASE|ADMIN_SESSION|CRON_SECRET|internal/i.test(raw)) {
+    return "A system error occurred. Please try again shortly.";
+  }
+  if (/\[object |All AI providers failed/i.test(raw)) {
+    return "AI could not complete this fix right now. Please try again.";
+  }
+  return raw.slice(0, 180);
+}
 
 function shopifyForbiddenMessage(error: unknown): string | null {
   if (!error || typeof error !== "object") return null;
@@ -104,9 +127,9 @@ export async function formatCaughtErrorAsync(error: unknown): Promise<string> {
     if (/forbidden/i.test(detail)) return SHOPIFY_403_HINT;
     const base = `HTTP ${error.status}${error.statusText ? ` ${error.statusText}` : ""}`;
     const msg = detail ? `${base}: ${detail}` : base;
-    return msg.slice(0, 500);
+    return merchantSafeError(msg);
   }
-  return formatCaughtError(error);
+  return merchantSafeError(formatCaughtError(error));
 }
 
 /** Remix / Shopify often throw Response for auth redirects — do not stringify. */

@@ -83,9 +83,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 function reasonBanner(reason: string) {
   if (reason === "AI_NOT_CONFIGURED") {
     return (
-      <Banner tone="warning" title="AI is not configured yet">
+      <Banner tone="warning" title="AI is temporarily unavailable">
         <Text as="p">
-          Something went wrong please try again after sometime
+          Please try again later or contact support if this keeps happening.
         </Text>
       </Banner>
     );

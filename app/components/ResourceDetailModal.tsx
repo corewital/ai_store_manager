@@ -29,6 +29,8 @@ export type IssueRow = {
   productTitle?: string | null;
   sku?: string | null;
   currentValue?: string | null;
+  productId?: string | null;
+  details?: Record<string, unknown>;
 };
 
 type Props = {
@@ -42,18 +44,25 @@ type Props = {
   onFixed: () => void;
 };
 
-function adminUrl(shopDomain: string, gid?: string | null) {
-  if (!gid) return null;
+function adminUrl(shopDomain: string, gid?: string | null, productId?: string | null) {
+  if (!gid && !productId) return null;
   const store = shopDomain.replace(".myshopify.com", "");
-  const [, , type, id] = gid.split("/");
-  const path =
-    type === "Product"
-      ? "products"
-      : type === "Collection"
-        ? "collections"
-        : null;
-  if (!path) return null;
-  return `https://admin.shopify.com/store/${store}/${path}/${id}`;
+  const target = productId || gid || "";
+  const parts = target.split("/");
+  const type = parts[parts.length - 2];
+  const id = parts[parts.length - 1];
+  if (type === "Product" || type === "ProductVariant") {
+    // Variant admin still opens via product when we have productId
+    if (productId) {
+      const pid = productId.split("/").pop();
+      return `https://admin.shopify.com/store/${store}/products/${pid}`;
+    }
+    return `https://admin.shopify.com/store/${store}/products/${id}`;
+  }
+  if (type === "Collection") {
+    return `https://admin.shopify.com/store/${store}/collections/${id}`;
+  }
+  return null;
 }
 
 export function ResourceDetailModal({
@@ -116,16 +125,28 @@ export function ResourceDetailModal({
 
   if (!row) return null;
 
-  const link = adminUrl(shopDomain, row.resourceId);
+  const link = adminUrl(shopDomain, row.resourceId, row.productId);
   const format = imageFormat(row.imageUrl);
   const busy = fetcher.state !== "idle" || upload.state !== "idle";
   const noMedia = module === "products" && row.issueCode === "no_media";
   const altField = module === "images" && row.issueCode === "missing_alt";
+  const reviewOnly = module === "inventory" || module === "navigation" || module === "theme";
   const label = issueLabel(row.issueCode, row.title);
   const productName = row.productTitle || row.title;
   const previewSrc = localPreview || (noMedia && value.startsWith("http") ? value : row.imageUrl);
 
   const submitManual = () => {
+    if (reviewOnly) {
+      fetcher.submit(
+        {
+          issueId: String(row.id),
+          field: "note",
+          manualValue: value.trim() || "reviewed",
+        },
+        { method: "post", action: `/api/fix/${module}` },
+      );
+      return;
+    }
     const v = altField ? value.slice(0, 125) : value;
     fetcher.submit(
       {
@@ -181,13 +202,17 @@ export function ResourceDetailModal({
         onClose={onClose}
         title={label}
         primaryAction={{
-          content: noMedia ? "Save image to Shopify" : "Save to Shopify",
+          content: reviewOnly
+            ? "Mark reviewed"
+            : noMedia
+              ? "Save image to Shopify"
+              : "Save to Shopify",
           onAction: submitManual,
           loading: busy && !fetcher.data?.preview,
-          disabled: !value.trim() || busy,
+          disabled: reviewOnly ? busy : !value.trim() || busy,
         }}
         secondaryActions={[
-          ...(noMedia
+          ...(noMedia || reviewOnly
             ? []
             : [
                 {
@@ -213,6 +238,12 @@ export function ResourceDetailModal({
               <Banner tone="info">
                 Upload a file or paste a public https image URL. Preview first, then Save
                 to attach it in Shopify. AI cannot invent product photos.
+              </Banner>
+            )}
+            {reviewOnly && (
+              <Banner tone="info">
+                {label} is a monitoring alert. Restock or adjust inventory in Shopify,
+                then mark this issue reviewed here.
               </Banner>
             )}
 
@@ -283,25 +314,37 @@ export function ResourceDetailModal({
             )}
 
             <TextField
-              label={noMedia ? "Image URL (or upload above)" : fieldLabel}
+              label={
+                reviewOnly
+                  ? "Optional note"
+                  : noMedia
+                    ? "Image URL (or upload above)"
+                    : fieldLabel
+              }
               value={value}
               onChange={(v) => {
                 setValue(altField ? v.slice(0, 125) : v);
                 if (noMedia) setSaveField("imageUrl");
               }}
               autoComplete="off"
-              multiline={noMedia ? 1 : 4}
+              multiline={noMedia || reviewOnly ? 1 : 4}
               maxLength={altField ? 125 : undefined}
               showCharacterCount={altField}
               placeholder={
-                noMedia ? "https://cdn.example.com/product.jpg" : undefined
+                noMedia
+                  ? "https://cdn.example.com/product.jpg"
+                  : reviewOnly
+                    ? "Restocked in Shopify…"
+                    : undefined
               }
               helpText={
-                noMedia
-                  ? "Public https URL, or use file upload. Preview updates when you paste a URL."
-                  : altField
-                    ? "Alt text max 125 characters."
-                    : "Click AI Fix to fill this field, edit if needed, then Save to Shopify."
+                reviewOnly
+                  ? "Click Mark reviewed after you handle this in Shopify Admin."
+                  : noMedia
+                    ? "Public https URL, or use file upload. Preview updates when you paste a URL."
+                    : altField
+                      ? "Alt text max 125 characters."
+                      : "Click AI Fix to fill this field, edit if needed, then Save to Shopify."
               }
             />
           </BlockStack>

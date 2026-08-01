@@ -7,10 +7,11 @@ const LABELS: Record<string, string> = {
   oversized: "Oversized image",
   seo_title: "Missing or short SEO title",
   seo_description: "Missing or short SEO description",
-  empty_collection: "Empty collection description",
+  empty_collection: "Empty collection",
   broken_link: "Broken navigation link",
   low_stock: "Low stock",
   out_of_stock: "Out of stock",
+  order_movement: "Stock moved by order",
 };
 
 export function issueLabel(code?: string | null, fallbackTitle?: string | null) {
