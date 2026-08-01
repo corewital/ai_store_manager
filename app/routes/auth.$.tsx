@@ -4,6 +4,10 @@ import { ensureShop } from "../services/shopify/shops.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  await ensureShop(session.shop, session.accessToken);
+  try {
+    await ensureShop(session.shop, session.accessToken);
+  } catch (error) {
+    console.error("[auth.$] ensureShop:", error);
+  }
   return null;
 };

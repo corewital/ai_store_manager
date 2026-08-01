@@ -112,10 +112,21 @@ export async function ensureShop(
     accessToken: accessToken ?? null,
     appApiUrl,
     installedAt: new Date(),
+  }).catch(async (error: unknown) => {
+    // Concurrent install: afterAuth + storeSession may both insert
+    const msg = error instanceof Error ? error.message : String(error);
+    if (!/UNIQUE|unique|constraint/i.test(msg)) throw error;
+    const raced = await db.query.shops.findFirst({
+      where: eq(shops.shopDomain, shopDomain),
+    });
+    if (!raced) throw error;
+    return raced.id;
   });
   const row = await db.query.shops.findFirst({ where: eq(shops.id, id) });
   if (!row) throw new Error("Failed to create shop");
-  await syncInstallRecord(row);
+  await syncInstallRecord(row).catch((error) => {
+    console.error("[ensureShop] syncInstallRecord:", error);
+  });
   return row;
 }
 

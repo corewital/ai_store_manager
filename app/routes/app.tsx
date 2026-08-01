@@ -10,6 +10,10 @@ import appShellStyles from "../styles/app-shell.css?url";
 import { authenticate } from "../shopify.server";
 import { ensureShop } from "../services/shopify/shops.server";
 import { getModuleVisibility } from "../services/admin/module-visibility.server";
+import {
+  DEFAULT_MODULE_VISIBILITY,
+  type AppModuleVisibility,
+} from "../services/admin/module-visibility";
 
 export const links = () => [
   { rel: "stylesheet", href: polarisStyles },
@@ -19,14 +23,27 @@ export const links = () => [
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  const shop = await ensureShop(session.shop, session.accessToken);
-  const modules = await getModuleVisibility();
-  return {
-    apiKey: process.env.SHOPIFY_API_KEY || "",
-    frozen: Boolean(shop.frozenAt),
-    shopDomain: shop.shopDomain,
-    modules,
-  };
+  try {
+    const shop = await ensureShop(session.shop, session.accessToken);
+    const modules = await getModuleVisibility().catch(
+      () => DEFAULT_MODULE_VISIBILITY,
+    );
+    return {
+      apiKey: process.env.SHOPIFY_API_KEY || "",
+      frozen: Boolean(shop.frozenAt),
+      shopDomain: shop.shopDomain,
+      modules,
+    };
+  } catch (error) {
+    console.error("[app.loader] bootstrap:", error);
+    // Still render shell so merchant is not stuck on Application Error
+    return {
+      apiKey: process.env.SHOPIFY_API_KEY || "",
+      frozen: false,
+      shopDomain: session.shop,
+      modules: DEFAULT_MODULE_VISIBILITY as AppModuleVisibility,
+    };
+  }
 };
 
 export default function App() {

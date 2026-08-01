@@ -79,12 +79,10 @@ function sessionToValues(session: Session) {
 /** Turso / libSQL Shopify session storage. */
 export class TursoSessionStorage implements SessionStorage {
   async storeSession(session: Session): Promise<boolean> {
-    const shop = session.accessToken
-      ? await ensureShop(session.shop, session.accessToken)
-      : null;
+    // Persist token immediately — shop bootstrap must not block session write.
     const values = {
       ...sessionToValues(session),
-      shopId: shop?.id ?? null,
+      shopId: null as number | null,
     };
     await db
       .insert(sessions)
@@ -93,6 +91,21 @@ export class TursoSessionStorage implements SessionStorage {
         target: sessions.id,
         set: values,
       });
+
+    if (session.accessToken) {
+      try {
+        const shop = await ensureShop(session.shop, session.accessToken);
+        await db
+          .update(sessions)
+          .set({ shopId: shop.id, updatedAt: new Date() })
+          .where(eq(sessions.id, session.id));
+      } catch (error) {
+        console.error(
+          "[TursoSessionStorage.storeSession] ensureShop failed (session saved):",
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
     return true;
   }
 

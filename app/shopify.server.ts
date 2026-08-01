@@ -33,8 +33,27 @@ const shopify = shopifyApp({
   distribution: AppDistribution.AppStore,
   hooks: {
     afterAuth: async ({ session }) => {
-      await ensureShop(session.shop, session.accessToken);
-      await shopify.registerWebhooks({ session });
+      // Never throw from afterAuth — webhook or DB flake must not break install.
+      try {
+        const shop = await ensureShop(session.shop, session.accessToken);
+        const { getOrCreateSettings } = await import(
+          "./services/shopify/app-settings.server"
+        );
+        await getOrCreateSettings(shop.id);
+      } catch (error) {
+        console.error(
+          "[afterAuth] shop bootstrap failed:",
+          error instanceof Error ? error.message : error,
+        );
+      }
+      try {
+        await shopify.registerWebhooks({ session });
+      } catch (error) {
+        console.error(
+          "[afterAuth] registerWebhooks failed (will retry on next auth):",
+          error instanceof Error ? error.message : error,
+        );
+      }
     },
   },
   future: {

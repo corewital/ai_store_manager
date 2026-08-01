@@ -42,6 +42,7 @@ import {
 import { getModuleVisibility } from "../services/admin/module-visibility.server";
 import { getEffectiveScanModules } from "../services/shopify/effective-modules.server";
 import type { AppModuleVisibility } from "../services/admin/module-visibility";
+import { DEFAULT_MODULE_VISIBILITY } from "../services/admin/module-visibility";
 import { getCatalogCounts } from "../services/shopify/catalog.server";
 import { listShopActivity } from "../services/shopify/shop-activity.server";
 import { issueLabel } from "../lib/issue-labels";
@@ -102,86 +103,155 @@ async function openCount(
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
-  const shop = await ensureShop(session.shop, session.accessToken);
-  const settings = await getOrCreateSettings(shop.id);
-  const job = await getShopJobState(shop.id);
-  const score = await computeHealthScore(shop.id);
-  const plan = await getShopPlan(shop.id);
-  const [master, scanModules, catalog, activity] = await Promise.all([
-    getModuleVisibility(),
-    getEffectiveScanModules(shop.id),
-    getCatalogCounts(admin),
-    listShopActivity(shop.id, session.shop, 5),
-  ]);
 
-  const issueCounts = {
-    products: 0,
-    seo: 0,
-    images: 0,
-    inventory: 0,
-    collections: 0,
-    navigation: 0,
-    theme: 0,
+  const emptyScore = {
+    overall: 100,
+    products: 100,
+    seo: 100,
+    images: 100,
+    inventory: 100,
+    collections: 100,
+    navigation: 100,
+    theme: 100,
+    apps: 100,
+    performance: 100,
   };
-  const [
-    productsN,
-    seoN,
-    imagesN,
-    inventoryN,
-    collectionsN,
-    navigationN,
-    themeN,
-    pendingRow,
-  ] = await Promise.all([
-    openCount(productIssues, shop.id),
-    openCount(seoIssues, shop.id),
-    openCount(imageIssues, shop.id),
-    openCount(inventoryFlags, shop.id),
-    openCount(collectionIssues, shop.id),
-    openCount(navigationIssues, shop.id),
-    openCount(themeIssues, shop.id),
-    db
-      .select({ pendingFixes: count() })
-      .from(fixQueue)
-      .where(
-        and(
-          eq(fixQueue.shopId, shop.id),
-          eq(fixQueue.status, "pending"),
-          isNull(fixQueue.deletedAt),
-        ),
+
+  try {
+    const shop = await ensureShop(session.shop, session.accessToken);
+    const settings = await getOrCreateSettings(shop.id);
+    const job = await getShopJobState(shop.id);
+    const plan = await getShopPlan(shop.id);
+
+    const [master, scanModules, catalog, activity, score] = await Promise.all([
+      getModuleVisibility().catch(() => DEFAULT_MODULE_VISIBILITY),
+      getEffectiveScanModules(shop.id).catch(
+        () =>
+          Object.fromEntries(
+            Object.keys(DEFAULT_MODULE_VISIBILITY).map((k) => [k, true]),
+          ) as Record<string, boolean>,
       ),
-  ]);
-  issueCounts.products = productsN;
-  issueCounts.seo = seoN;
-  issueCounts.images = imagesN;
-  issueCounts.inventory = inventoryN;
-  issueCounts.collections = collectionsN;
-  issueCounts.navigation = navigationN;
-  issueCounts.theme = themeN;
-  const totalOpen = Object.values(issueCounts).reduce((a, b) => a + b, 0);
-  const pendingFixes = pendingRow[0]?.pendingFixes ?? 0;
+      getCatalogCounts(admin),
+      listShopActivity(shop.id, session.shop, 5).catch(() => []),
+      computeHealthScore(shop.id).catch(() => emptyScore),
+    ]);
 
-  return {
-    shopDomain: session.shop,
-    score,
-    plan,
-    issueCounts,
-    catalog,
-    totalOpen,
-    pendingFixes,
-    modules: master,
-    scanModules,
-    lastScannedAt: settings.lastScannedAt
-      ? new Date(settings.lastScannedAt).toISOString()
-      : null,
-    job: {
-      status: job.status,
-      type: job.type,
-      message: job.message,
-      busy: job.busy,
-    },
-    activity,
-  };
+    const issueCounts = {
+      products: 0,
+      seo: 0,
+      images: 0,
+      inventory: 0,
+      collections: 0,
+      navigation: 0,
+      theme: 0,
+    };
+    try {
+      const [
+        productsN,
+        seoN,
+        imagesN,
+        inventoryN,
+        collectionsN,
+        navigationN,
+        themeN,
+        pendingRow,
+      ] = await Promise.all([
+        openCount(productIssues, shop.id),
+        openCount(seoIssues, shop.id),
+        openCount(imageIssues, shop.id),
+        openCount(inventoryFlags, shop.id),
+        openCount(collectionIssues, shop.id),
+        openCount(navigationIssues, shop.id),
+        openCount(themeIssues, shop.id),
+        db
+          .select({ pendingFixes: count() })
+          .from(fixQueue)
+          .where(
+            and(
+              eq(fixQueue.shopId, shop.id),
+              eq(fixQueue.status, "pending"),
+              isNull(fixQueue.deletedAt),
+            ),
+          ),
+      ]);
+      issueCounts.products = productsN;
+      issueCounts.seo = seoN;
+      issueCounts.images = imagesN;
+      issueCounts.inventory = inventoryN;
+      issueCounts.collections = collectionsN;
+      issueCounts.navigation = navigationN;
+      issueCounts.theme = themeN;
+      const totalOpen = Object.values(issueCounts).reduce((a, b) => a + b, 0);
+      const pendingFixes = pendingRow[0]?.pendingFixes ?? 0;
+
+      return {
+        shopDomain: session.shop,
+        score,
+        plan,
+        issueCounts,
+        catalog,
+        totalOpen,
+        pendingFixes,
+        modules: master,
+        scanModules,
+        lastScannedAt: settings.lastScannedAt
+          ? new Date(settings.lastScannedAt).toISOString()
+          : null,
+        job: {
+          status: job.status,
+          type: job.type,
+          message: job.message,
+          busy: job.busy,
+        },
+        activity,
+      };
+    } catch (error) {
+      console.error("[dashboard] counts:", error);
+      return {
+        shopDomain: session.shop,
+        score,
+        plan,
+        issueCounts,
+        catalog,
+        totalOpen: 0,
+        pendingFixes: 0,
+        modules: master,
+        scanModules,
+        lastScannedAt: null,
+        job: {
+          status: job.status,
+          type: job.type,
+          message: job.message,
+          busy: job.busy,
+        },
+        activity,
+      };
+    }
+  } catch (error) {
+    console.error("[dashboard] loader:", error);
+    return {
+      shopDomain: session.shop,
+      score: emptyScore,
+      plan: "free" as const,
+      issueCounts: {
+        products: 0,
+        seo: 0,
+        images: 0,
+        inventory: 0,
+        collections: 0,
+        navigation: 0,
+        theme: 0,
+      },
+      catalog: { products: 0, collections: 0 },
+      totalOpen: 0,
+      pendingFixes: 0,
+      modules: DEFAULT_MODULE_VISIBILITY,
+      scanModules: {},
+      lastScannedAt: null,
+      job: { status: "idle", type: null, message: null, busy: false },
+      activity: [],
+    };
+  }
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -437,9 +507,9 @@ export default function Index() {
                 {insights.slice(0, 5).map((line) => (
                   <li key={line}>{line}</li>
                 ))}
-                {activity.slice(0, 2).map((item) => (
-                  <li key={item.id}>{item.title}</li>
-                ))}
+                {activity.slice(0, 2).map((item) =>
+                  item ? <li key={item.id}>{item.title}</li> : null,
+                )}
               </ul>
               <div style={{ marginTop: "0.85rem" }}>
                 <Link to="/app/reports" className="dashBtn dashBtnAccent" style={{ display: "inline-block" }}>
