@@ -14,6 +14,7 @@ import {
 import {
   generateAltText,
   generateCollectionDescriptionHtml,
+  generateCollectionSeo,
   generateProductDescriptionHtml,
   generateSeo,
   suggestSku,
@@ -241,18 +242,31 @@ export async function applyManualFix(
       );
       await assertNoUserErrors(await res.json(), "productUpdate");
     } else if (module === "collections") {
-      const res = await admin.graphql(
-        `#graphql
-        mutation ($input: CollectionInput!) {
-          collectionUpdate(input: $input) { userErrors { message } }
-        }`,
-        {
-          variables: {
-            input: { id: row.resourceId, descriptionHtml: value },
-          },
-        },
-      );
-      await assertNoUserErrors(await res.json(), "collectionUpdate");
+      if (field === "imageUrl" || field === "image_url") {
+        const { attachCollectionImageFromUrl } = await import("./catalog.server");
+        const uploaded = await attachCollectionImageFromUrl(
+          admin,
+          row.resourceId,
+          value,
+          String(details.title || details.productTitle || "Collection"),
+        );
+        if (!uploaded.ok) throw new Error(uploaded.error);
+      } else {
+        const input =
+          field === "seoTitle"
+            ? { id: row.resourceId, seo: { title: value } }
+            : field === "seoDescription"
+              ? { id: row.resourceId, seo: { description: value } }
+              : { id: row.resourceId, descriptionHtml: value };
+        const res = await admin.graphql(
+          `#graphql
+          mutation ($input: CollectionInput!) {
+            collectionUpdate(input: $input) { userErrors { message } }
+          }`,
+          { variables: { input } },
+        );
+        await assertNoUserErrors(await res.json(), "collectionUpdate");
+      }
     } else if (module === "images") {
       if (!details.productId) throw new Error("missing productId");
       const res = await admin.graphql(
@@ -301,11 +315,14 @@ export async function previewModuleFix(
   if (!row) return { ok: false, error: "no_issue" };
   if (!row.resourceId) return { ok: false, error: "no_resource" };
 
-  if (module === "products" && row.issueCode === "no_media") {
+  if (
+    (module === "products" || module === "collections") &&
+    row.issueCode === "no_media"
+  ) {
     return {
       ok: false,
       skipMessage:
-        "Upload an image file or paste an image URL, then Save. AI cannot invent product photos.",
+        "Upload an image file or paste an image URL, then Save. AI cannot invent photos.",
     };
   }
 
@@ -357,6 +374,20 @@ export async function previewModuleFix(
       return { ok: true, preview: descriptionHtml, field: "descriptionHtml" };
     }
 
+    if (
+      module === "collections" &&
+      (row.issueCode === "seo_title" || row.issueCode === "seo_description")
+    ) {
+      const seo = await generateCollectionSeo(admin, row.resourceId);
+      const preview =
+        row.issueCode === "seo_description" ? seo.seoDescription : seo.seoTitle;
+      return {
+        ok: true,
+        preview,
+        field: row.issueCode === "seo_description" ? "seoDescription" : "seoTitle",
+      };
+    }
+
     if (module === "images" && row.issueCode === "missing_alt") {
       const details = row.detailsJson ? JSON.parse(row.detailsJson) : {};
       const result = await generateAltText({
@@ -401,7 +432,12 @@ export async function runModuleFix(
   }
 
   // Enforce plan AI-fix limit (except upload-only no_media)
-  if (!(module === "products" && row.issueCode === "no_media")) {
+  if (
+    !(
+      (module === "products" || module === "collections") &&
+      row.issueCode === "no_media"
+    )
+  ) {
     try {
       if (!(await hasAnyAiKey())) {
         return {
@@ -518,6 +554,34 @@ export async function runModuleFix(
           },
         );
         await assertNoUserErrors(await res.json(), "collectionUpdate");
+      } else if (
+        row.issueCode === "seo_title" ||
+        row.issueCode === "seo_description"
+      ) {
+        const seo = await generateCollectionSeo(admin, row.resourceId);
+        const seoInput =
+          row.issueCode === "seo_title"
+            ? { title: seo.seoTitle }
+            : { description: seo.seoDescription };
+        const res = await admin.graphql(
+          `#graphql
+          mutation ($input: CollectionInput!) {
+            collectionUpdate(input: $input) { userErrors { message } }
+          }`,
+          {
+            variables: {
+              input: { id: row.resourceId, seo: seoInput },
+            },
+          },
+        );
+        await assertNoUserErrors(await res.json(), "collectionUpdate");
+      } else if (row.issueCode === "no_media") {
+        await markFixDone(job.id, "upload_required");
+        return {
+          ok: false,
+          skipMessage:
+            "Add an image URL in the detail panel (or upload a file). AI does not generate photos.",
+        };
       } else {
         await markFixDone(job.id, "collection_issue_manual");
         return {

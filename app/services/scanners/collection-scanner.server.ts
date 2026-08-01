@@ -1,9 +1,16 @@
-import { and, eq, isNull, notInArray } from "drizzle-orm";
+import { and, desc, eq, isNull, notInArray } from "drizzle-orm";
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import { db } from "../../db/client";
 import { collectionIssues } from "../../db/schema";
+import {
+  isShortOrMissingDescription,
+  isShortOrMissingSeoDescription,
+  isShortOrMissingSeoTitle,
+} from "../../lib/html-text";
 
-async function upsert(
+const MIN_COLLECTION_DESC = 20;
+
+async function setIssueOpen(
   shopId: number,
   resourceId: string,
   issueCode: string,
@@ -15,17 +22,21 @@ async function upsert(
       eq(collectionIssues.shopId, shopId),
       eq(collectionIssues.resourceId, resourceId),
       eq(collectionIssues.issueCode, issueCode),
-      eq(collectionIssues.status, "open"),
       isNull(collectionIssues.deletedAt),
     ),
+    orderBy: [desc(collectionIssues.id)],
   });
   if (existing) {
-    if (details) {
-      await db
-        .update(collectionIssues)
-        .set({ detailsJson: JSON.stringify(details), updatedAt: new Date() })
-        .where(eq(collectionIssues.id, existing.id));
-    }
+    await db
+      .update(collectionIssues)
+      .set({
+        status: "open",
+        resolvedAt: null,
+        title,
+        detailsJson: details ? JSON.stringify(details) : existing.detailsJson,
+        updatedAt: new Date(),
+      })
+      .where(eq(collectionIssues.id, existing.id));
     return;
   }
   await db.insert(collectionIssues).values({
@@ -38,16 +49,41 @@ async function upsert(
   });
 }
 
+async function resolveIssue(
+  shopId: number,
+  resourceId: string,
+  issueCode: string,
+) {
+  await db
+    .update(collectionIssues)
+    .set({
+      status: "resolved",
+      resolvedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(collectionIssues.shopId, shopId),
+        eq(collectionIssues.resourceId, resourceId),
+        eq(collectionIssues.issueCode, issueCode),
+        eq(collectionIssues.status, "open"),
+        isNull(collectionIssues.deletedAt),
+      ),
+    );
+}
+
 type CollectionNode = {
   id: string;
   title: string;
   descriptionHtml?: string | null;
   image?: { url?: string | null } | null;
   productsCount?: { count?: number } | null;
+  seo?: { title?: string | null; description?: string | null } | null;
 };
 
 /**
- * Scan collections ASC by ID, hard-stop at plan cap (paginated for caps > 250).
+ * Scan collections ASC by ID, hard-stop at plan cap.
+ * Checks: body description, empty collection, SEO meta title, SEO meta description.
  */
 export async function scanCollections(
   shopId: number,
@@ -74,6 +110,7 @@ export async function scanCollections(
             id title descriptionHtml
             image { url }
             productsCount { count }
+            seo { title description }
           }
         }
       }`,
@@ -107,24 +144,65 @@ export async function scanCollections(
       title: c.title,
       imageUrl: c.image?.url ?? null,
       productsCount: count,
+      seoTitle: c.seo?.title ?? null,
+      seoDescription: c.seo?.description ?? null,
     };
+
     if (count === 0) {
-      await upsert(
+      await setIssueOpen(
         shopId,
         c.id,
         "empty_collection",
         `Empty collection — ${c.title}`,
         details,
       );
+    } else {
+      await resolveIssue(shopId, c.id, "empty_collection");
     }
-    if (!c.descriptionHtml || c.descriptionHtml.trim().length < 10) {
-      await upsert(
+
+    if (isShortOrMissingDescription(c.descriptionHtml, MIN_COLLECTION_DESC)) {
+      await setIssueOpen(
         shopId,
         c.id,
         "missing_description",
-        `Collection missing description — ${c.title}`,
+        "Missing or short description",
         details,
       );
+    } else {
+      await resolveIssue(shopId, c.id, "missing_description");
+    }
+
+    if (isShortOrMissingSeoTitle(c.seo?.title)) {
+      await setIssueOpen(
+        shopId,
+        c.id,
+        "seo_title",
+        "Missing or short SEO title",
+        details,
+      );
+    } else {
+      await resolveIssue(shopId, c.id, "seo_title");
+    }
+
+    if (isShortOrMissingSeoDescription(c.seo?.description)) {
+      await setIssueOpen(
+        shopId,
+        c.id,
+        "seo_description",
+        "Missing or short SEO description",
+        details,
+      );
+    } else {
+      await resolveIssue(shopId, c.id, "seo_description");
+    }
+
+    if (!c.image?.url) {
+      await setIssueOpen(shopId, c.id, "no_media", "Missing image", {
+        ...details,
+        imageUrl: null,
+      });
+    } else {
+      await resolveIssue(shopId, c.id, "no_media");
     }
   }
 

@@ -69,3 +69,53 @@ export async function attachProductImageFromUrl(
   }
   return { ok: true };
 }
+
+/** Set / replace a collection featured image from a remote URL (no AI). */
+export async function attachCollectionImageFromUrl(
+  admin: AdminApiContext,
+  collectionId: string,
+  imageUrl: string,
+  alt?: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const url = imageUrl.trim();
+  if (!/^https?:\/\//i.test(url)) {
+    return { ok: false, error: "Image URL must start with http:// or https://" };
+  }
+
+  const res = await admin.graphql(
+    `#graphql
+    mutation ($input: CollectionInput!) {
+      collectionUpdate(input: $input) {
+        collection { id image { url } }
+        userErrors { message field }
+      }
+    }`,
+    {
+      variables: {
+        input: {
+          id: collectionId,
+          image: {
+            src: url,
+            altText: (alt || "").slice(0, 125) || null,
+          },
+        },
+      },
+    },
+  );
+  const json = (await res.json()) as {
+    errors?: { message: string }[];
+    data?: {
+      collectionUpdate?: {
+        userErrors?: { message: string }[];
+      };
+    };
+  };
+  if (json.errors?.length) {
+    return { ok: false, error: json.errors.map((e) => e.message).join("; ") };
+  }
+  const errs = json.data?.collectionUpdate?.userErrors ?? [];
+  if (errs.length) {
+    return { ok: false, error: errs.map((e) => e.message).join("; ") };
+  }
+  return { ok: true };
+}

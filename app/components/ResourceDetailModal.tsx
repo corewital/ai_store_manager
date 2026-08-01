@@ -44,6 +44,38 @@ type Props = {
   onFixed: () => void;
 };
 
+function resolveEditField(
+  module: string,
+  issueCode: string,
+  fallbackField: string,
+  fallbackLabel: string,
+): { field: string; label: string } {
+  if (issueCode === "seo_title") {
+    return { field: "seoTitle", label: "SEO meta title" };
+  }
+  if (issueCode === "seo_description") {
+    return { field: "seoDescription", label: "SEO meta description" };
+  }
+  if (module === "collections" && issueCode === "missing_description") {
+    return { field: "descriptionHtml", label: "Collection description (HTML)" };
+  }
+  if (module === "seo") {
+    return { field: fallbackField || "seoTitle", label: fallbackLabel || "SEO title" };
+  }
+  return { field: fallbackField, label: fallbackLabel };
+}
+
+function initialValueForRow(
+  row: IssueRow,
+  editField: string,
+): string {
+  if (row.currentValue) return row.currentValue;
+  const d = row.details || {};
+  if (editField === "seoTitle") return String(d.seoTitle || "");
+  if (editField === "seoDescription") return String(d.seoDescription || "");
+  return "";
+}
+
 function adminUrl(
   shopDomain: string,
   gid?: string | null,
@@ -111,10 +143,12 @@ export function ResourceDetailModal({
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setValue(row?.currentValue ?? "");
-    setSaveField(field);
+    if (!row) return;
+    const resolved = resolveEditField(module, row.issueCode, field, fieldLabel);
+    setValue(initialValueForRow(row, resolved.field));
+    setSaveField(resolved.field);
     setLocalPreview(null);
-  }, [row?.id, row?.currentValue, field]);
+  }, [row, field, fieldLabel, module]);
 
   useEffect(() => {
     if (fetcher.state !== "idle" || !fetcher.data) return;
@@ -140,6 +174,14 @@ export function ResourceDetailModal({
 
   if (!row) return null;
 
+  const editMeta = resolveEditField(module, row.issueCode, field, fieldLabel);
+  const activeFieldLabel =
+    saveField === "seoTitle"
+      ? "SEO meta title"
+      : saveField === "seoDescription"
+        ? "SEO meta description"
+        : editMeta.label;
+
   const link = row
     ? adminUrl(shopDomain, row.resourceId, row.productId, row.resourceType)
     : null;
@@ -149,9 +191,15 @@ export function ResourceDetailModal({
   };
   const format = imageFormat(row.imageUrl);
   const busy = fetcher.state !== "idle" || upload.state !== "idle";
-  const noMedia = module === "products" && row.issueCode === "no_media";
+  const noMedia =
+    (module === "products" || module === "collections") &&
+    row.issueCode === "no_media";
   const altField = module === "images" && row.issueCode === "missing_alt";
-  const reviewOnly = module === "inventory" || module === "navigation" || module === "theme";
+  const reviewOnly =
+    module === "inventory" ||
+    module === "navigation" ||
+    module === "theme" ||
+    (module === "collections" && row.issueCode === "empty_collection");
   const label = issueLabel(row.issueCode, row.title);
   const productName = row.productTitle || row.title;
   const previewSrc = localPreview || (noMedia && value.startsWith("http") ? value : row.imageUrl);
@@ -263,7 +311,7 @@ export function ResourceDetailModal({
             {noMedia && (
               <Banner tone="info">
                 Upload a file or paste a public https image URL. Preview first, then Save
-                to attach it in Shopify. AI cannot invent product photos.
+                to attach it in Shopify. AI cannot invent photos.
               </Banner>
             )}
             {reviewOnly && (
@@ -345,7 +393,7 @@ export function ResourceDetailModal({
                   ? "Optional note"
                   : noMedia
                     ? "Image URL (or upload above)"
-                    : fieldLabel
+                    : activeFieldLabel
               }
               value={value}
               onChange={(v) => {

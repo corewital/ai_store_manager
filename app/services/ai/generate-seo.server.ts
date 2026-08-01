@@ -175,3 +175,54 @@ Return HTML only.`;
   assertUsefulCopy(html, String(c.title), 40);
   return html.includes("<p") ? html : `<p>${html}</p>`;
 }
+
+/** Collection page meta title + meta description for search listings. */
+export async function generateCollectionSeo(
+  admin: AdminApiContext,
+  collectionGid: string,
+): Promise<{ seoTitle: string; seoDescription: string }> {
+  const res = await admin.graphql(
+    `#graphql
+    query ($id: ID!) {
+      collection(id: $id) {
+        id title handle descriptionHtml
+        seo { title description }
+        products(first: 8) { nodes { title } }
+      }
+    }`,
+    { variables: { id: collectionGid } },
+  );
+  const json = await res.json();
+  const c = json.data?.collection;
+  if (!c) throw new Error("collection_not_found");
+  const titles = (c.products?.nodes ?? [])
+    .map((n: { title?: string }) => n.title)
+    .filter(Boolean)
+    .slice(0, 8);
+  const body = String(c.descriptionHtml || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 400);
+  const raw = await generateJson<{ seoTitle: string; seoDescription: string }>(
+    `Return ONLY valid JSON:
+{"seoTitle":"...","seoDescription":"..."}
+Rules:
+- seoTitle: 30–60 characters (hard max 60). Include the collection name. No keyword stuffing.
+- seoDescription: 120–155 characters (hard max 160). Clear benefit for shoppers. No hype.
+Facts only:
+Collection: ${c.title}
+Handle: ${c.handle || ""}
+Sample products: ${titles.join(", ") || "(none)"}
+Body excerpt: ${body || "(empty)"}
+Current SEO title: ${c.seo?.title || "(empty)"}
+Current SEO description: ${c.seo?.description || "(empty)"}`,
+  );
+  const seoTitle = clamp(String(raw.seoTitle || c.title), 60);
+  const seoDescription = clamp(
+    String(raw.seoDescription || `${c.title} collection`),
+    160,
+  );
+  assertUsefulCopy(seoTitle, String(c.title), 8);
+  return { seoTitle, seoDescription };
+}

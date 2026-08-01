@@ -1,6 +1,6 @@
 /** Human-readable issue labels for merchant UI */
 const LABELS: Record<string, string> = {
-  no_media: "Product has no image",
+  no_media: "Missing image",
   missing_description: "Missing or short description",
   missing_sku: "Missing SKU",
   missing_alt: "Missing image alt text",

@@ -1,11 +1,15 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import { db } from "../../db/client";
 import { seoIssues } from "../../db/schema";
+import {
+  isShortOrMissingSeoDescription,
+  isShortOrMissingSeoTitle,
+} from "../../lib/html-text";
 
 type Admin = AdminApiContext;
 
-async function upsert(
+async function setIssueOpen(
   shopId: number,
   resourceId: string,
   issueCode: string,
@@ -17,17 +21,21 @@ async function upsert(
       eq(seoIssues.shopId, shopId),
       eq(seoIssues.resourceId, resourceId),
       eq(seoIssues.issueCode, issueCode),
-      eq(seoIssues.status, "open"),
       isNull(seoIssues.deletedAt),
     ),
+    orderBy: [desc(seoIssues.id)],
   });
   if (existing) {
-    if (details) {
-      await db
-        .update(seoIssues)
-        .set({ detailsJson: JSON.stringify(details), updatedAt: new Date() })
-        .where(eq(seoIssues.id, existing.id));
-    }
+    await db
+      .update(seoIssues)
+      .set({
+        status: "open",
+        resolvedAt: null,
+        title,
+        detailsJson: details ? JSON.stringify(details) : existing.detailsJson,
+        updatedAt: new Date(),
+      })
+      .where(eq(seoIssues.id, existing.id));
     return;
   }
   await db.insert(seoIssues).values({
@@ -40,6 +48,32 @@ async function upsert(
   });
 }
 
+async function resolveIssue(
+  shopId: number,
+  resourceId: string,
+  issueCode: string,
+) {
+  await db
+    .update(seoIssues)
+    .set({
+      status: "resolved",
+      resolvedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(seoIssues.shopId, shopId),
+        eq(seoIssues.resourceId, resourceId),
+        eq(seoIssues.issueCode, issueCode),
+        eq(seoIssues.status, "open"),
+        isNull(seoIssues.deletedAt),
+      ),
+    );
+}
+
+/**
+ * Product SEO: meta title + meta description (search engine listing fields).
+ */
 export async function scanSeo(
   shopId: number,
   admin: Admin,
@@ -86,18 +120,32 @@ export async function scanSeo(
       title: p.title,
       imageUrl: p.featuredImage?.url ?? null,
       sku: skus[0] || null,
+      seoTitle: p.seo?.title ?? null,
+      seoDescription: p.seo?.description ?? null,
     };
-    if (!p.seo?.title || p.seo.title.length < 10) {
-      await upsert(shopId, p.id, "seo_title", `Weak SEO title: ${p.title}`, details);
+
+    if (isShortOrMissingSeoTitle(p.seo?.title)) {
+      await setIssueOpen(
+        shopId,
+        p.id,
+        "seo_title",
+        "Missing or short SEO title",
+        details,
+      );
+    } else {
+      await resolveIssue(shopId, p.id, "seo_title");
     }
-    if (!p.seo?.description || p.seo.description.length < 50) {
-      await upsert(
+
+    if (isShortOrMissingSeoDescription(p.seo?.description)) {
+      await setIssueOpen(
         shopId,
         p.id,
         "seo_description",
-        `Weak SEO description: ${p.title}`,
+        "Missing or short SEO description",
         details,
       );
+    } else {
+      await resolveIssue(shopId, p.id, "seo_description");
     }
   }
   return {

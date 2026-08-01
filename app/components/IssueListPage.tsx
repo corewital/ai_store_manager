@@ -152,7 +152,8 @@ export function IssueListPage({
   ];
 
   const isNoMedia = (row: IssueRow) =>
-    module === "products" && row.issueCode === "no_media";
+    (module === "products" || module === "collections") &&
+    row.issueCode === "no_media";
 
   return (
     <Page fullWidth>

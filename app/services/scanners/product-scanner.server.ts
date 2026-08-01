@@ -1,9 +1,12 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import { db } from "../../db/client";
 import { productIssues } from "../../db/schema";
+import { isShortOrMissingDescription } from "../../lib/html-text";
 
 type Admin = AdminApiContext;
+
+const MIN_PRODUCT_DESC = 20;
 
 type ProductNode = {
   id: string;
@@ -31,7 +34,7 @@ function productDetails(product: ProductNode) {
   };
 }
 
-async function upsertIssue(
+async function setIssueOpen(
   shopId: number,
   resourceId: string,
   issueCode: string,
@@ -43,17 +46,21 @@ async function upsertIssue(
       eq(productIssues.shopId, shopId),
       eq(productIssues.resourceId, resourceId),
       eq(productIssues.issueCode, issueCode),
-      eq(productIssues.status, "open"),
       isNull(productIssues.deletedAt),
     ),
+    orderBy: [desc(productIssues.id)],
   });
   if (existing) {
-    if (details) {
-      await db
-        .update(productIssues)
-        .set({ detailsJson: JSON.stringify(details), updatedAt: new Date() })
-        .where(eq(productIssues.id, existing.id));
-    }
+    await db
+      .update(productIssues)
+      .set({
+        status: "open",
+        resolvedAt: null,
+        title,
+        detailsJson: details ? JSON.stringify(details) : existing.detailsJson,
+        updatedAt: new Date(),
+      })
+      .where(eq(productIssues.id, existing.id));
     return;
   }
   await db.insert(productIssues).values({
@@ -66,29 +73,65 @@ async function upsertIssue(
   });
 }
 
-function detectProductIssues(shopId: number, product: ProductNode) {
-  const jobs: Promise<void>[] = [];
+async function resolveIssue(
+  shopId: number,
+  resourceId: string,
+  issueCode: string,
+) {
+  await db
+    .update(productIssues)
+    .set({
+      status: "resolved",
+      resolvedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(productIssues.shopId, shopId),
+        eq(productIssues.resourceId, resourceId),
+        eq(productIssues.issueCode, issueCode),
+        eq(productIssues.status, "open"),
+        isNull(productIssues.deletedAt),
+      ),
+    );
+}
+
+async function syncProductIssues(shopId: number, product: ProductNode) {
   const details = productDetails(product);
-  if (!product.descriptionHtml || product.descriptionHtml.trim().length < 20) {
-    jobs.push(
-      upsertIssue(shopId, product.id, "missing_description", "Missing or short description", details),
-    );
-  }
   const variants = product.variants?.nodes ?? [];
-  if (variants.some((v) => !v.sku)) {
-    jobs.push(
-      upsertIssue(shopId, product.id, "missing_sku", "Variant missing SKU", details),
+
+  if (isShortOrMissingDescription(product.descriptionHtml, MIN_PRODUCT_DESC)) {
+    await setIssueOpen(
+      shopId,
+      product.id,
+      "missing_description",
+      "Missing or short description",
+      details,
     );
+  } else {
+    await resolveIssue(shopId, product.id, "missing_description");
   }
+
+  if (variants.some((v) => !v.sku?.trim())) {
+    await setIssueOpen(
+      shopId,
+      product.id,
+      "missing_sku",
+      "Variant missing SKU",
+      details,
+    );
+  } else {
+    await resolveIssue(shopId, product.id, "missing_sku");
+  }
+
   if ((product.media?.nodes?.length ?? 0) === 0) {
-    jobs.push(
-      upsertIssue(shopId, product.id, "no_media", "Product has no media", {
-        ...details,
-        imageUrl: null,
-      }),
-    );
+    await setIssueOpen(shopId, product.id, "no_media", "Missing image", {
+      ...details,
+      imageUrl: null,
+    });
+  } else {
+    await resolveIssue(shopId, product.id, "no_media");
   }
-  return Promise.all(jobs);
 }
 
 export async function scanSingleProduct(
@@ -111,7 +154,7 @@ export async function scanSingleProduct(
   const json = await res.json();
   const product = json.data?.product as ProductNode | null;
   if (!product) return;
-  await detectProductIssues(shopId, product);
+  await syncProductIssues(shopId, product);
 }
 
 export async function clearProductIssues(shopId: number, productGid: string) {
@@ -165,7 +208,7 @@ export async function scanProducts(
   const connection = json.data?.products;
   const nodes = (connection?.nodes ?? []) as ProductNode[];
   for (const product of nodes) {
-    await detectProductIssues(shopId, product);
+    await syncProductIssues(shopId, product);
   }
   return {
     scanned: nodes.length,
