@@ -9,6 +9,9 @@ import { getShopPlan } from "../services/shopify/billing.server";
 import { getPlanLimit } from "../services/shopify/plan-gate.server";
 import { type PlanSlug } from "../config/plans";
 
+/** Vercel Function limit (Pro); ignored on Hobby if plan caps lower. */
+export const config = { maxDuration: 300 };
+
 function assertCronAuth(request: Request) {
   const auth = request.headers.get("authorization");
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {

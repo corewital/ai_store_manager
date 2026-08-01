@@ -48,6 +48,9 @@ import { listShopActivity } from "../services/shopify/shop-activity.server";
 import { issueLabel } from "../lib/issue-labels";
 import dashboardStyles from "../styles/dashboard.css?url";
 
+/** Vercel Function limit for scan kickoff / waitUntil (Pro). */
+export const config = { maxDuration: 300 };
+
 export const links: LinksFunction = () => [
   { rel: "stylesheet", href: dashboardStyles },
 ];

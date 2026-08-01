@@ -1,9 +1,4 @@
 {
-  "functions": {
-    "build/server/index.js": {
-      "maxDuration": 300
-    }
-  },
   "crons": [
     {
       "path": "/api/cron/daily-scan",
