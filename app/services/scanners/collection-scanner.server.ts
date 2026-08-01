@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, notInArray } from "drizzle-orm";
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import { db } from "../../db/client";
 import { collectionIssues } from "../../db/schema";
@@ -46,11 +46,11 @@ export async function scanCollections(
   const first =
     maxCollections == null
       ? 50
-      : Math.min(50, Math.max(1, maxCollections));
+      : Math.min(250, Math.max(1, maxCollections));
   const res = await admin.graphql(
     `#graphql
     query CollectionScan($first: Int!) {
-      collections(first: $first) {
+      collections(first: $first, sortKey: ID, reverse: false) {
         nodes {
           id title descriptionHtml
           image { url }
@@ -63,6 +63,9 @@ export async function scanCollections(
   const json = await res.json();
   let nodes = json.data?.collections?.nodes ?? [];
   if (maxCollections != null) nodes = nodes.slice(0, maxCollections);
+
+  const allowedIds = nodes.map((c: { id: string }) => c.id);
+
   for (const c of nodes) {
     const count = c.productsCount?.count ?? 0;
     const details = {
@@ -89,5 +92,23 @@ export async function scanCollections(
         details,
       );
     }
+  }
+
+  if (maxCollections != null && allowedIds.length > 0) {
+    await db
+      .update(collectionIssues)
+      .set({
+        status: "resolved",
+        resolvedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(collectionIssues.shopId, shopId),
+          eq(collectionIssues.status, "open"),
+          isNull(collectionIssues.deletedAt),
+          notInArray(collectionIssues.resourceId, allowedIds),
+        ),
+      );
   }
 }

@@ -133,10 +133,23 @@ export async function scanProducts(
   cursor?: string | null,
   maxTake?: number,
 ) {
+  const first =
+    maxTake != null && Number.isFinite(maxTake)
+      ? Math.min(25, Math.max(0, Math.floor(maxTake)))
+      : 25;
+  if (first <= 0) {
+    return {
+      scanned: 0,
+      productIds: [] as string[],
+      hasNextPage: false,
+      endCursor: null as string | null,
+    };
+  }
+
   const res = await admin.graphql(
     `#graphql
-    query ProductsScan($cursor: String) {
-      products(first: 25, after: $cursor) {
+    query ProductsScan($cursor: String, $first: Int!) {
+      products(first: $first, after: $cursor, sortKey: CREATED_AT, reverse: false) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id title descriptionHtml status
@@ -146,21 +159,18 @@ export async function scanProducts(
         }
       }
     }`,
-    { variables: { cursor: cursor ?? null } },
+    { variables: { cursor: cursor ?? null, first } },
   );
   const json = await res.json();
   const connection = json.data?.products;
   const nodes = (connection?.nodes ?? []) as ProductNode[];
-  const take =
-    maxTake != null && Number.isFinite(maxTake)
-      ? nodes.slice(0, Math.max(0, maxTake))
-      : nodes;
-  for (const product of take) {
+  for (const product of nodes) {
     await detectProductIssues(shopId, product);
   }
   return {
-    scanned: take.length,
-    hasNextPage: Boolean(connection?.pageInfo?.hasNextPage) && take.length === nodes.length,
-    endCursor: connection?.pageInfo?.endCursor as string | null,
+    scanned: nodes.length,
+    productIds: nodes.map((n) => n.id),
+    hasNextPage: Boolean(connection?.pageInfo?.hasNextPage) && nodes.length === first,
+    endCursor: (connection?.pageInfo?.endCursor as string | null) ?? null,
   };
 }

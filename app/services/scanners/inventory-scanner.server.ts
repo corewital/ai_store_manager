@@ -49,61 +49,82 @@ export async function scanInventory(
   shopId: number,
   admin: Admin,
   cursor?: string | null,
+  maxTake?: number,
 ) {
+  const first =
+    maxTake != null && Number.isFinite(maxTake)
+      ? Math.min(25, Math.max(0, Math.floor(maxTake)))
+      : 25;
+  if (first <= 0) {
+    return {
+      scanned: 0,
+      productIds: [] as string[],
+      hasNextPage: false,
+      endCursor: null as string | null,
+    };
+  }
+
+  // Same product window as Products/SEO/Images (DESC) — not unbounded variants
   const res = await admin.graphql(
     `#graphql
-    query InventoryScan($cursor: String) {
-      productVariants(first: 50, after: $cursor) {
+    query InventoryScan($cursor: String, $first: Int!) {
+      products(first: $first, after: $cursor, sortKey: CREATED_AT, reverse: false) {
         pageInfo { hasNextPage endCursor }
         nodes {
-          id sku title
-          inventoryQuantity
-          product {
-            id
-            title
-            featuredImage { url }
+          id
+          title
+          featuredImage { url }
+          variants(first: 50) {
+            nodes {
+              id sku title inventoryQuantity
+            }
           }
         }
       }
     }`,
-    { variables: { cursor: cursor ?? null } },
+    { variables: { cursor: cursor ?? null, first } },
   );
   const json = await res.json();
-  const connection = json.data?.productVariants;
+  const connection = json.data?.products;
+  const nodes = connection?.nodes ?? [];
 
-  for (const v of connection?.nodes ?? []) {
-    const qty = v.inventoryQuantity ?? 0;
-    const details = {
-      sku: v.sku,
-      qty,
-      productTitle: v.product?.title ?? v.title,
-      title: v.product?.title ?? v.title,
-      imageUrl: v.product?.featuredImage?.url ?? null,
-      productId: v.product?.id ?? null,
-    };
-    if (qty <= 0) {
-      await upsertFlag(
-        shopId,
-        v.id,
-        "out_of_stock",
-        `Out of stock — ${v.product?.title ?? v.title}`,
-        "high",
-        details,
-      );
-    } else if (qty > 0 && qty <= 5) {
-      await upsertFlag(
-        shopId,
-        v.id,
-        "low_stock",
-        `Low stock — ${v.product?.title ?? v.title}`,
-        "medium",
-        details,
-      );
+  for (const product of nodes) {
+    for (const v of product.variants?.nodes ?? []) {
+      const qty = v.inventoryQuantity ?? 0;
+      const details = {
+        sku: v.sku,
+        qty,
+        productTitle: product.title,
+        title: product.title,
+        imageUrl: product.featuredImage?.url ?? null,
+        productId: product.id,
+      };
+      if (qty <= 0) {
+        await upsertFlag(
+          shopId,
+          v.id,
+          "out_of_stock",
+          `Out of stock — ${product.title}`,
+          "high",
+          details,
+        );
+      } else if (qty > 0 && qty <= 5) {
+        await upsertFlag(
+          shopId,
+          v.id,
+          "low_stock",
+          `Low stock — ${product.title}`,
+          "medium",
+          details,
+        );
+      }
     }
   }
 
   return {
-    hasNextPage: Boolean(connection?.pageInfo?.hasNextPage),
+    scanned: nodes.length,
+    productIds: nodes.map((p: { id: string }) => p.id),
+    hasNextPage: Boolean(connection?.pageInfo?.hasNextPage) && nodes.length === first,
     endCursor: (connection?.pageInfo?.endCursor as string | null) ?? null,
   };
 }

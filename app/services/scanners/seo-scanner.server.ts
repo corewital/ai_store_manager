@@ -40,11 +40,29 @@ async function upsert(
   });
 }
 
-export async function scanSeo(shopId: number, admin: Admin, cursor?: string | null) {
+export async function scanSeo(
+  shopId: number,
+  admin: Admin,
+  cursor?: string | null,
+  maxTake?: number,
+) {
+  const first =
+    maxTake != null && Number.isFinite(maxTake)
+      ? Math.min(25, Math.max(0, Math.floor(maxTake)))
+      : 25;
+  if (first <= 0) {
+    return {
+      scanned: 0,
+      productIds: [] as string[],
+      hasNextPage: false,
+      endCursor: null as string | null,
+    };
+  }
+
   const res = await admin.graphql(
     `#graphql
-    query SeoScan($cursor: String) {
-      products(first: 25, after: $cursor) {
+    query SeoScan($cursor: String, $first: Int!) {
+      products(first: $first, after: $cursor, sortKey: CREATED_AT, reverse: false) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id title
@@ -54,11 +72,12 @@ export async function scanSeo(shopId: number, admin: Admin, cursor?: string | nu
         }
       }
     }`,
-    { variables: { cursor: cursor ?? null } },
+    { variables: { cursor: cursor ?? null, first } },
   );
   const json = await res.json();
   const connection = json.data?.products;
-  for (const p of connection?.nodes ?? []) {
+  const nodes = connection?.nodes ?? [];
+  for (const p of nodes) {
     const skus = (p.variants?.nodes ?? [])
       .map((v: { sku?: string | null }) => v.sku)
       .filter(Boolean);
@@ -82,7 +101,9 @@ export async function scanSeo(shopId: number, admin: Admin, cursor?: string | nu
     }
   }
   return {
-    hasNextPage: Boolean(connection?.pageInfo?.hasNextPage),
+    scanned: nodes.length,
+    productIds: nodes.map((p: { id: string }) => p.id),
+    hasNextPage: Boolean(connection?.pageInfo?.hasNextPage) && nodes.length === first,
     endCursor: (connection?.pageInfo?.endCursor as string | null) ?? null,
   };
 }

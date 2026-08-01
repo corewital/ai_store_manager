@@ -47,11 +47,25 @@ export async function scanImages(
   shopId: number,
   admin: Admin,
   cursor?: string | null,
+  maxTake?: number,
 ) {
+  const first =
+    maxTake != null && Number.isFinite(maxTake)
+      ? Math.min(25, Math.max(0, Math.floor(maxTake)))
+      : 25;
+  if (first <= 0) {
+    return {
+      scanned: 0,
+      productIds: [] as string[],
+      hasNextPage: false,
+      endCursor: null as string | null,
+    };
+  }
+
   const res = await admin.graphql(
     `#graphql
-    query ImageScan($cursor: String) {
-      products(first: 20, after: $cursor) {
+    query ImageScan($cursor: String, $first: Int!) {
+      products(first: $first, after: $cursor, sortKey: CREATED_AT, reverse: false) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id title
@@ -67,12 +81,13 @@ export async function scanImages(
         }
       }
     }`,
-    { variables: { cursor: cursor ?? null } },
+    { variables: { cursor: cursor ?? null, first } },
   );
   const json = await res.json();
   const connection = json.data?.products;
+  const nodes = connection?.nodes ?? [];
 
-  for (const product of connection?.nodes ?? []) {
+  for (const product of nodes) {
     for (const media of product.media?.nodes ?? []) {
       if (!media?.id) continue;
       const details = {
@@ -108,7 +123,9 @@ export async function scanImages(
   }
 
   return {
-    hasNextPage: Boolean(connection?.pageInfo?.hasNextPage),
+    scanned: nodes.length,
+    productIds: nodes.map((p: { id: string }) => p.id),
+    hasNextPage: Boolean(connection?.pageInfo?.hasNextPage) && nodes.length === first,
     endCursor: (connection?.pageInfo?.endCursor as string | null) ?? null,
   };
 }
