@@ -8,9 +8,11 @@ import {
   TextField,
   Button,
   Banner,
+  InlineStack,
+  InlineGrid,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { eq } from "drizzle-orm";
 import { authenticate } from "../shopify.server";
 import { db } from "../db/client";
@@ -19,6 +21,14 @@ import { askAssistant } from "../services/ai/assistant.server";
 import { getShopAiConfig } from "../services/ai/ai-config.server";
 import { ensureShop } from "../services/shopify/shops.server";
 import { requireAppModule } from "../services/shopify/require-module.server";
+
+const SUGGESTIONS = [
+  "What are my top 10 products?",
+  "How can I boost my store sales?",
+  "Which products need better descriptions or images?",
+  "What should I fix next for store health?",
+  "Summarize my collections and SEO gaps",
+];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -42,13 +52,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop, session.accessToken);
 
   const message = String((await request.formData()).get("message") ?? "").trim();
   if (!message) return { ok: false, reason: "EMPTY" };
 
-  const result = await askAssistant(shop.id, message);
+  const result = await askAssistant(shop.id, message, admin);
   if (!result.ok) return { ok: false, reason: result.reason };
 
   const convo = await db.query.assistantConversations.findFirst({
@@ -64,7 +74,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     ...(Array.isArray(prev) ? prev : []),
     { role: "user", text: message },
     { role: "assistant", text: result.reply },
-  ];
+  ].slice(-40);
 
   if (convo) {
     await db
@@ -77,7 +87,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       messagesJson: JSON.stringify(messages),
     });
   }
-  return { ok: true, reply: result.reply };
+  return { ok: true, reply: result.reply, messages };
 };
 
 function reasonBanner(reason: string) {
@@ -107,8 +117,22 @@ export default function AssistantPage() {
   const { messages, aiConfigured, aiEnabled } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const [input, setInput] = useState("");
+  const [thread, setThread] = useState(messages);
+
+  useEffect(() => {
+    setThread(messages);
+  }, [messages]);
+
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    if (fetcher.data.ok && "messages" in fetcher.data && Array.isArray(fetcher.data.messages)) {
+      setThread(fetcher.data.messages as { role: string; text: string }[]);
+      setInput("");
+    }
+  }, [fetcher.state, fetcher.data]);
 
   const blocked = !aiConfigured || !aiEnabled;
+  const busy = fetcher.state !== "idle";
 
   return (
     <Page>
@@ -118,15 +142,22 @@ export default function AssistantPage() {
           reasonBanner(aiConfigured ? "AI_DISABLED" : "AI_NOT_CONFIGURED")}
         {fetcher.data && !fetcher.data.ok && !blocked &&
           reasonBanner(String((fetcher.data as { reason?: string }).reason))}
+
+        <Banner tone="info">
+          Answers use this store’s live products, collections, health scores, and open
+          issues — ask about top products, growth ideas, or what to fix next.
+        </Banner>
+
         <Card>
           <BlockStack gap="300">
-            {messages.length === 0 && (
+            {thread.length === 0 && (
               <Text as="p" tone="subdued">
-                Ask about your store health, open issues, or next steps.
+                Try a suggestion below, or ask anything about this store’s catalog and
+                health.
               </Text>
             )}
-            {messages.map((m, i) => (
-              <Text key={i} as="p" variant="bodyMd">
+            {thread.map((m, i) => (
+              <Text key={`${m.role}-${i}`} as="p" variant="bodyMd">
                 <Text as="span" fontWeight="semibold">
                   {m.role === "user" ? "You" : "Assistant"}:
                 </Text>{" "}
@@ -135,6 +166,23 @@ export default function AssistantPage() {
             ))}
           </BlockStack>
         </Card>
+
+        {!blocked && thread.length === 0 && (
+          <InlineGrid columns={{ xs: 1, sm: 2 }} gap="200">
+            {SUGGESTIONS.map((q) => (
+              <Button
+                key={q}
+                disabled={busy}
+                onClick={() => {
+                  setInput(q);
+                }}
+              >
+                {q}
+              </Button>
+            ))}
+          </InlineGrid>
+        )}
+
         <fetcher.Form method="post">
           <BlockStack gap="200">
             <TextField
@@ -144,17 +192,19 @@ export default function AssistantPage() {
               autoComplete="off"
               multiline={3}
               name="message"
-              disabled={blocked}
-              placeholder="Why are my sales dropping?"
+              disabled={blocked || busy}
+              placeholder="e.g. What are my top products and how can I boost sales?"
             />
-            <Button
-              submit
-              variant="primary"
-              loading={fetcher.state !== "idle"}
-              disabled={blocked}
-            >
-              Send
-            </Button>
+            <InlineStack gap="200">
+              <Button
+                submit
+                variant="primary"
+                loading={busy}
+                disabled={blocked || !input.trim()}
+              >
+                Send
+              </Button>
+            </InlineStack>
           </BlockStack>
         </fetcher.Form>
       </BlockStack>
