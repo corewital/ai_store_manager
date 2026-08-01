@@ -44,22 +44,37 @@ type Props = {
   onFixed: () => void;
 };
 
-function adminUrl(shopDomain: string, gid?: string | null, productId?: string | null) {
-  if (!gid && !productId) return null;
-  const store = shopDomain.replace(".myshopify.com", "");
-  const target = productId || gid || "";
-  const parts = target.split("/");
-  const type = parts[parts.length - 2];
+function adminUrl(
+  shopDomain: string,
+  gid?: string | null,
+  productId?: string | null,
+  resourceType?: string | null,
+) {
+  const store = shopDomain.replace(/\.myshopify\.com$/i, "").split(".")[0];
+  if (!store) return null;
+
+  const numeric = (raw: string) => {
+    const parts = raw.split("/");
+    return parts[parts.length - 1] || raw;
+  };
+
+  // Prefer product admin — MediaImage GIDs are not browsable alone
+  if (productId) {
+    return `https://admin.shopify.com/store/${store}/products/${numeric(productId)}`;
+  }
+
+  if (!gid) return null;
+  const parts = gid.split("/");
+  const type = parts[parts.length - 2] || resourceType || "";
   const id = parts[parts.length - 1];
-  if (type === "Product" || type === "ProductVariant") {
-    // Variant admin still opens via product when we have productId
-    if (productId) {
-      const pid = productId.split("/").pop();
-      return `https://admin.shopify.com/store/${store}/products/${pid}`;
-    }
+
+  if (/ProductVariant/i.test(type)) {
+    return `https://admin.shopify.com/store/${store}/products`;
+  }
+  if (/Product|MediaImage/i.test(type)) {
     return `https://admin.shopify.com/store/${store}/products/${id}`;
   }
-  if (type === "Collection") {
+  if (/Collection/i.test(type)) {
     return `https://admin.shopify.com/store/${store}/collections/${id}`;
   }
   return null;
@@ -125,7 +140,13 @@ export function ResourceDetailModal({
 
   if (!row) return null;
 
-  const link = adminUrl(shopDomain, row.resourceId, row.productId);
+  const link = row
+    ? adminUrl(shopDomain, row.resourceId, row.productId, row.resourceType)
+    : null;
+  const openShopify = () => {
+    if (!link) return;
+    window.open(link, "_blank", "noopener,noreferrer");
+  };
   const format = imageFormat(row.imageUrl);
   const busy = fetcher.state !== "idle" || upload.state !== "idle";
   const noMedia = module === "products" && row.issueCode === "no_media";
@@ -222,7 +243,12 @@ export function ResourceDetailModal({
                 },
               ]),
           ...(link
-            ? [{ content: "Open in Shopify", url: link, external: true }]
+            ? [
+                {
+                  content: "Open in Shopify",
+                  onAction: openShopify,
+                },
+              ]
             : []),
         ]}
       >

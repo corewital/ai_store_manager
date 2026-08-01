@@ -20,7 +20,6 @@ import { db } from "../db/client";
 import { fixQueue } from "../db/schema";
 import { ensureShop } from "../services/shopify/shops.server";
 import { enqueueShopFixes } from "../services/shopify/shop-jobs.server";
-import { listShopActivity } from "../services/shopify/shop-activity.server";
 import { REPORTS_NAV, SubNav } from "../components/SubNav";
 import { requireAppModule } from "../services/shopify/require-module.server";
 import { merchantSafeError } from "../lib/errors.server";
@@ -88,8 +87,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       ),
     );
 
-  const activity = await listShopActivity(shop.id, session.shop, 25);
-
   return {
     pending,
     done,
@@ -108,17 +105,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       payloadJson: j.payloadJson,
       createdAt: j.createdAt ? new Date(j.createdAt).toISOString() : null,
       updatedAt: j.updatedAt ? new Date(j.updatedAt).toISOString() : null,
-    })),
-    changelog: activity.map((c) => ({
-      id: c.id,
-      title: c.title,
-      detail: c.detail ? merchantSafeError(c.detail) : null,
-      before: c.before,
-      after: c.after,
-      module: c.module,
-      status: c.status,
-      kind: c.kind,
-      createdAt: c.at,
     })),
   };
 };
@@ -171,7 +157,7 @@ function actionLabel(action?: string | null) {
 }
 
 export default function FixesPage() {
-  const { pending, done, failed, total, page, pageSize, status, jobs, changelog } =
+  const { pending, done, failed, total, page, pageSize, status, jobs } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const [params, setParams] = useSearchParams();
@@ -317,52 +303,6 @@ export default function FixesPage() {
               )}
             </>
           )}
-        </Card>
-
-        <Card>
-          <BlockStack gap="300">
-            <Text as="h2" variant="headingMd">
-              Change log
-            </Text>
-            <Text as="p" tone="subdued" variant="bodySm">
-              Recent store activity related to scans, fixes, and plan changes.
-            </Text>
-            {changelog.length === 0 ? (
-              <Text as="p" tone="subdued">
-                No change log entries yet.
-              </Text>
-            ) : (
-              changelog.map((c) => (
-                <InlineStack key={c.id} align="space-between" gap="200" wrap>
-                  <BlockStack gap="050">
-                    <InlineStack gap="200" blockAlign="center">
-                      <Text as="span" fontWeight="semibold">
-                        {c.title}
-                      </Text>
-                      {c.status && (
-                        <Badge tone={toneFor(c.status)}>{c.status}</Badge>
-                      )}
-                    </InlineStack>
-                    <Text as="span" tone="subdued" variant="bodySm">
-                      {[c.module, c.detail].filter(Boolean).join(" · ") || "—"}
-                    </Text>
-                    {(c.before || c.after) && (
-                      <Text as="span" tone="subdued" variant="bodySm">
-                        {c.before ? `Before: ${c.before.slice(0, 80)}` : ""}
-                        {c.before && c.after ? " → " : ""}
-                        {c.after ? `After: ${c.after.slice(0, 80)}` : ""}
-                      </Text>
-                    )}
-                  </BlockStack>
-                  <Text as="span" tone="subdued" variant="bodySm">
-                    {c.createdAt
-                      ? new Date(c.createdAt).toLocaleString()
-                      : "—"}
-                  </Text>
-                </InlineStack>
-              ))
-            )}
-          </BlockStack>
         </Card>
       </BlockStack>
     </Page>

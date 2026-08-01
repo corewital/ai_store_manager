@@ -16,12 +16,16 @@
   grid-template-columns: auto 1fr auto;
   gap: 1.5rem;
   align-items: center;
-  background: var(--dash-card);
+  background: linear-gradient(160deg, #ffffff 0%, #f1f5f9 100%);
   border: 1px solid var(--dash-border);
   border-radius: 18px;
   padding: 1.25rem 1.5rem;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+  box-shadow:
+    0 14px 36px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transform: perspective(1000px) rotateX(1deg);
 }
+
 
 .dashHeroCopy h1 {
   margin: 0 0 0.25rem;
@@ -87,7 +91,29 @@
   justify-content: space-between;
   position: relative;
   overflow: hidden;
+  text-decoration: none;
+  transform: perspective(800px) rotateX(1deg);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
+
+.dashMetric:hover {
+  transform: perspective(800px) translateY(-3px) rotateX(2deg);
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
+}
+
+a.dashCat {
+  text-decoration: none;
+  color: inherit;
+  transform: perspective(900px) rotateX(0.5deg);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+a.dashCat:hover {
+  transform: perspective(900px) translateY(-3px) rotateX(1.5deg);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.1);
+}
+
 
 .dashMetricMint {
   background: linear-gradient(145deg, #86efac, #4ade80);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useFetcher } from "@remix-run/react";
+import { useFetcher, useNavigate } from "@remix-run/react";
 import {
   Page,
   Card,
@@ -85,6 +85,7 @@ export function IssueListPage({
   const [notice, setNotice] = useState<string | null>(null);
 
   const bulk = useFetcher<FixResponse>();
+  const navigate = useNavigate();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -154,7 +155,7 @@ export function IssueListPage({
     module === "products" && row.issueCode === "no_media";
 
   return (
-    <Page>
+    <Page fullWidth>
       <TitleBar title={title} />
       <SubNav items={navItems} />
       <BlockStack gap="400">
@@ -196,7 +197,10 @@ export function IssueListPage({
             ) : rows.length === 0 ? (
               <EmptyState
                 heading="No open issues"
-                action={{ content: "Run scan", url: "/app" }}
+                action={{
+                  content: "Run scan",
+                  onAction: () => navigate("/app"),
+                }}
                 image="/images/Dashboard.png"
               >
                 <p>{emptyMessage}</p>
@@ -228,7 +232,15 @@ export function IssueListPage({
                     >
                       <IndexTable.Cell>
                         <ResourceImage
-                          src={row.imageUrl}
+                          src={
+                            row.imageUrl ||
+                            (typeof row.details?.imageUrl === "string"
+                              ? row.details.imageUrl
+                              : null) ||
+                            (typeof row.details?.url === "string"
+                              ? row.details.url
+                              : null)
+                          }
                           alt={row.productTitle || row.title}
                           onClick={() => setActive(row)}
                         />

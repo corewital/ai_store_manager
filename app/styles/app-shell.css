@@ -1,0 +1,17 @@
+/* Full-bleed merchant app body — remove Polaris side gutters */
+.Polaris-Page {
+  max-width: 100% !important;
+  padding-left: 1rem !important;
+  padding-right: 1rem !important;
+}
+.Polaris-Page__Content {
+  max-width: 100% !important;
+}
+.Polaris-Frame__Content,
+.Polaris-Frame__Main {
+  max-width: 100%;
+}
+body {
+  margin: 0;
+  background: var(--p-color-bg, #f6f6f7);
+}

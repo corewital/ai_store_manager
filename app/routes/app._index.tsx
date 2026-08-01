@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData, useFetcher, useRevalidator } from "@remix-run/react";
+import { Link, useLoaderData, useFetcher, useRevalidator } from "@remix-run/react";
 import { useEffect } from "react";
 import {
   Page,
@@ -222,6 +222,12 @@ export default function Index() {
     return () => clearInterval(t);
   }, [job.busy, revalidator]);
 
+  useEffect(() => {
+    if (scan.state === "idle" && scan.data?.ok) {
+      revalidator.revalidate();
+    }
+  }, [scan.state, scan.data, revalidator]);
+
   const visibleCategories = CATEGORIES.filter((c) => {
     const key = c.key as keyof AppModuleVisibility;
     if (modules[key] === false) return false;
@@ -332,30 +338,30 @@ export default function Index() {
                     : "Scan Now"}
               </button>
             </scan.Form>
-            <a className="dashBtn dashBtnAccent" href="/app/assistant">
+            <Link className="dashBtn dashBtnAccent" to="/app/assistant">
               AI Analysis
-            </a>
+            </Link>
           </div>
         </section>
 
         <section className="dashMetrics">
-          <div className="dashMetric dashMetricMint">
+          <Link to="/app/inventory" className="dashMetric dashMetricMint">
             <div>
               <div className="dashMetricLabel">Inventory · Low stock</div>
               <div className="dashMetricValue">{issueCounts.inventory}</div>
               <div className="dashMetricHint">Open inventory flags</div>
             </div>
             <Spark color="#14532d" />
-          </div>
-          <div className="dashMetric dashMetricGreen">
+          </Link>
+          <Link to="/app/seo" className="dashMetric dashMetricGreen">
             <div>
               <div className="dashMetricLabel">SEO score</div>
               <div className="dashMetricValue">{score.seo}</div>
-              <div className="dashMetricHint">Trending metric</div>
+              <div className="dashMetricHint">{issueCounts.seo} open SEO issues</div>
             </div>
             <Spark />
-          </div>
-          <div className="dashMetric dashMetricBlue">
+          </Link>
+          <Link to="/app/fixes" className="dashMetric dashMetricBlue">
             <div>
               <div className="dashMetricLabel">Open issues</div>
               <div className="dashMetricValue">{totalOpen}</div>
@@ -364,7 +370,7 @@ export default function Index() {
               </div>
             </div>
             <Spark />
-          </div>
+          </Link>
         </section>
 
         <section className="dashMain">
@@ -378,15 +384,17 @@ export default function Index() {
                     ? Math.round(((total - Math.min(open, total)) / total) * 100)
                     : score[key];
                 return (
-                  <a key={key} href={href} className="dashCat">
+                  <Link key={key} to={href} className="dashCat">
                     <img src={icon} alt="" className="dashCatIcon" />
                     <p className="dashCatName">{label}</p>
                     <p className="dashCatScore">{score[key]}</p>
-                    <p className="dashCatClear">{clearPct}% clear</p>
+                    <p className="dashCatClear">
+                      {open} open · {clearPct}% clear
+                    </p>
                     <div className="dashBar">
                       <span style={{ width: `${clearPct}%` }} />
                     </div>
-                  </a>
+                  </Link>
                 );
               })}
               {visibleCategories.length === 0 && (
@@ -409,9 +417,9 @@ export default function Index() {
                 ))}
               </ul>
               <div style={{ marginTop: "0.85rem" }}>
-                <Button url="/app/reports" size="slim">
+                <Link to="/app/reports" className="dashBtn dashBtnAccent" style={{ display: "inline-block" }}>
                   View reports
-                </Button>
+                </Link>
               </div>
             </div>
 
@@ -430,13 +438,13 @@ export default function Index() {
                       ? "Open modules to preview AI fixes, then save to Shopify."
                       : "Run Scan Now to refresh health, or ask the assistant for next steps."}
                 </p>
-                <a
+                <Link
                   className="dashBtn dashBtnPrimary"
-                  href={pendingFixes > 0 || totalOpen > 0 ? "/app/fixes" : "/app/assistant"}
-                  style={{ width: "100%" }}
+                  to={pendingFixes > 0 || totalOpen > 0 ? "/app/fixes" : "/app/assistant"}
+                  style={{ width: "100%", textAlign: "center", display: "inline-block" }}
                 >
                   {pendingFixes > 0 || totalOpen > 0 ? "Apply fixes" : "Open AI Assistant"}
-                </a>
+                </Link>
               </div>
             </div>
           </div>

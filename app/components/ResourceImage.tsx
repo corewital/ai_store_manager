@@ -9,9 +9,27 @@ type Props = {
 
 const FALLBACK = "/images/placeholder.svg";
 
+/** Normalize Shopify CDN / relative URLs for embedded app img tags. */
+export function normalizeImageUrl(src?: string | null): string | null {
+  if (!src || typeof src !== "string") return null;
+  let url = src.trim();
+  if (!url) return null;
+  if (url.startsWith("//")) url = `https:${url}`;
+  if (url.startsWith("http://")) url = `https://${url.slice(7)}`;
+  // Request a small thumb when CDN supports width param
+  if (
+    /cdn\.shopify\.com|shopifycdn\.net/i.test(url) &&
+    !/[?&]width=/.test(url)
+  ) {
+    url += (url.includes("?") ? "&" : "?") + "width=160";
+  }
+  return url;
+}
+
 export function ResourceImage({ src, alt, size = 40, onClick }: Props) {
   const [failed, setFailed] = useState(false);
-  const url = !src || failed ? FALLBACK : src;
+  const normalized = normalizeImageUrl(src);
+  const url = !normalized || failed ? FALLBACK : normalized;
 
   const img = (
     <img
@@ -20,6 +38,7 @@ export function ResourceImage({ src, alt, size = 40, onClick }: Props) {
       width={size}
       height={size}
       loading="lazy"
+      referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
       style={{
         width: size,

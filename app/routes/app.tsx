@@ -5,6 +5,7 @@ import { AppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
 import { Banner, BlockStack, Card, Page, Text } from "@shopify/polaris";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
+import appShellStyles from "../styles/app-shell.css?url";
 
 import { authenticate } from "../shopify.server";
 import { ensureShop } from "../services/shopify/shops.server";
@@ -12,6 +13,7 @@ import { getModuleVisibility } from "../services/admin/module-visibility.server"
 
 export const links = () => [
   { rel: "stylesheet", href: polarisStyles },
+  { rel: "stylesheet", href: appShellStyles },
   { rel: "icon", href: "/images/App_Favicon.png", type: "image/png" },
 ];
 
