@@ -137,11 +137,20 @@ async function processOneShop(
     const { admin } = await unauthenticated.admin(shop.shopDomain);
 
     if (jobType === "scan") {
-      await runFullScan(shop.id, admin, { maxPages: 4 });
+      await runFullScan(shop.id, admin, {
+        maxPages: 4,
+        onProgress: async (pct, message) => {
+          await setJob(shop.id, {
+            jobStatus: "running",
+            jobType: "scan",
+            jobMessage: `${pct}% · ${message}`,
+          });
+        },
+      });
       await setJob(shop.id, {
         jobStatus: "completed",
         jobType: "scan",
-        jobMessage: "Scan completed successfully.",
+        jobMessage: "100% · Scan completed successfully.",
         jobFinishedAt: new Date(),
       });
       return { shopId: shop.id, ok: true, message: "scan_done" };

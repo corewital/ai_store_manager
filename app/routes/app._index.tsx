@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData, useFetcher } from "@remix-run/react";
+import { useLoaderData, useFetcher, useRevalidator } from "@remix-run/react";
+import { useEffect } from "react";
 import {
   Page,
   Layout,
@@ -196,7 +197,22 @@ export default function Index() {
     scanModules,
   } = useLoaderData<typeof loader>();
   const scan = useFetcher<typeof action>();
+  const revalidator = useRevalidator();
   const scanning = scan.state !== "idle" || job.busy;
+  const progressMatch = String(job.message || "").match(/^(\d{1,3})\s*%/);
+  const scanProgress = progressMatch
+    ? Math.min(100, Number(progressMatch[1]))
+    : job.busy
+      ? 12
+      : job.status === "completed"
+        ? 100
+        : 0;
+
+  useEffect(() => {
+    if (!job.busy) return;
+    const t = setInterval(() => revalidator.revalidate(), 2500);
+    return () => clearInterval(t);
+  }, [job.busy, revalidator]);
 
   const visibleCategories = CATEGORIES.filter((c) => {
     const key = c.key as keyof AppModuleVisibility;
@@ -241,10 +257,20 @@ export default function Index() {
           </Banner>
         )}
         {job.busy && (
-          <Banner tone="warning">
-            Working: {job.type || "job"} — {job.message || job.status}. Buttons
-            stay locked until this finishes.
-          </Banner>
+          <Card>
+            <BlockStack gap="300">
+              <InlineStack align="space-between">
+                <Text as="h2" variant="headingMd">
+                  {job.type === "scan" ? "Scan in progress" : "Job running"}
+                </Text>
+                <Badge tone="attention">{`${scanProgress}%`}</Badge>
+              </InlineStack>
+              <ProgressBar progress={scanProgress} size="small" />
+              <Text as="p" tone="subdued" variant="bodySm">
+                {job.message || job.status}
+              </Text>
+            </BlockStack>
+          </Card>
         )}
         {!job.busy && job.status === "completed" && job.message && (
           <Banner tone="success">{job.message}</Banner>
@@ -290,7 +316,11 @@ export default function Index() {
                   disabled={job.busy}
                   size="large"
                 >
-                  {job.busy ? "Job running…" : scanning ? "Queueing…" : "Queue Scan"}
+                  {job.busy
+                    ? `Scanning… ${scanProgress}%`
+                    : scanning
+                      ? "Starting…"
+                      : "Scan now"}
                 </Button>
               </scan.Form>
               <Button url="/app/fixes" size="large" disabled={job.busy}>
@@ -324,13 +354,10 @@ export default function Index() {
           <Card>
             <BlockStack gap="100">
               <Text as="p" tone="subdued" variant="bodySm">
-                Catalog
+                Products
               </Text>
-              <Text as="p" variant="headingLg">
-                {catalog.products.toLocaleString()} products
-              </Text>
-              <Text as="p" tone="subdued" variant="bodySm">
-                {catalog.collections.toLocaleString()} collections
+              <Text as="p" variant="heading2xl">
+                {catalog.products}
               </Text>
             </BlockStack>
           </Card>
@@ -342,9 +369,47 @@ export default function Index() {
               <Text as="p" variant="headingLg">
                 {PLANS[plan].name}
               </Text>
+              <Button url="/app/settings/billing" size="slim">
+                Upgrade plan
+              </Button>
             </BlockStack>
           </Card>
         </InlineGrid>
+
+        <Card>
+          <BlockStack gap="300">
+            <Text as="h2" variant="headingMd">
+              Open issues by module
+            </Text>
+            <BlockStack gap="200">
+              {visibleCategories.map(({ key, label }) => {
+                const open =
+                  key in issueCounts
+                    ? issueCounts[key as keyof typeof issueCounts]
+                    : 0;
+                const max = Math.max(totalOpen, 1);
+                const pct = Math.round((open / max) * 100);
+                return (
+                  <BlockStack key={key} gap="100">
+                    <InlineStack align="space-between">
+                      <Text as="span" variant="bodySm">
+                        {label}
+                      </Text>
+                      <Text as="span" variant="bodySm" tone="subdued">
+                        {open}
+                      </Text>
+                    </InlineStack>
+                    <ProgressBar
+                      progress={pct}
+                      size="small"
+                      tone={open > 0 ? "critical" : "primary"}
+                    />
+                  </BlockStack>
+                );
+              })}
+            </BlockStack>
+          </BlockStack>
+        </Card>
 
         <Layout>
           <Layout.Section>

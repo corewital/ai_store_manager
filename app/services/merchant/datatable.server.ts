@@ -118,6 +118,11 @@ async function queryIssues(
       resourceId: r.resourceId,
       resourceType: r.resourceType,
       imageUrl: (details.url as string) ?? (details.imageUrl as string) ?? null,
+      productTitle:
+        (details.productTitle as string) ??
+        (details.title as string) ??
+        null,
+      sku: (details.sku as string) ?? null,
       currentValue:
         (details.currentValue as string) ?? (details.current as string) ?? null,
       details,

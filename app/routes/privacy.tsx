@@ -24,7 +24,6 @@ export default function PrivacyPolicy() {
         </Link>
         <nav className={styles.navLinks}>
           <Link to="/">Home</Link>
-          <Link to="/admin/login">Admin</Link>
         </nav>
       </header>
 
@@ -163,7 +162,6 @@ export default function PrivacyPolicy() {
         <span className={styles.footerLinks}>
           <Link to="/">Home</Link>
           <Link to="/privacy">Privacy policy</Link>
-          <Link to="/admin/login">Admin login</Link>
         </span>
       </footer>
     </div>

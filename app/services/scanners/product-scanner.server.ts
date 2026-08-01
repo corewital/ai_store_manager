@@ -10,9 +10,26 @@ type ProductNode = {
   title: string;
   descriptionHtml?: string | null;
   status?: string;
+  featuredImage?: { url?: string | null } | null;
   variants?: { nodes: { id: string; sku?: string | null; price?: string }[] };
-  media?: { nodes: { id: string }[] };
+  media?: { nodes: { id: string; preview?: { image?: { url?: string } } }[] };
 };
+
+function productDetails(product: ProductNode) {
+  const variants = product.variants?.nodes ?? [];
+  const skus = variants.map((v) => v.sku).filter((s): s is string => Boolean(s?.trim()));
+  const imageUrl =
+    product.featuredImage?.url ||
+    product.media?.nodes?.[0]?.preview?.image?.url ||
+    null;
+  return {
+    title: product.title,
+    productTitle: product.title,
+    sku: skus[0] || null,
+    skus,
+    imageUrl,
+  };
+}
 
 async function upsertIssue(
   shopId: number,
@@ -30,7 +47,15 @@ async function upsertIssue(
       isNull(productIssues.deletedAt),
     ),
   });
-  if (existing) return;
+  if (existing) {
+    if (details) {
+      await db
+        .update(productIssues)
+        .set({ detailsJson: JSON.stringify(details), updatedAt: new Date() })
+        .where(eq(productIssues.id, existing.id));
+    }
+    return;
+  }
   await db.insert(productIssues).values({
     shopId,
     resourceId,
@@ -43,25 +68,23 @@ async function upsertIssue(
 
 function detectProductIssues(shopId: number, product: ProductNode) {
   const jobs: Promise<void>[] = [];
+  const details = productDetails(product);
   if (!product.descriptionHtml || product.descriptionHtml.trim().length < 20) {
     jobs.push(
-      upsertIssue(shopId, product.id, "missing_description", "Missing or short description", {
-        title: product.title,
-      }),
+      upsertIssue(shopId, product.id, "missing_description", "Missing or short description", details),
     );
   }
   const variants = product.variants?.nodes ?? [];
   if (variants.some((v) => !v.sku)) {
     jobs.push(
-      upsertIssue(shopId, product.id, "missing_sku", "Variant missing SKU", {
-        title: product.title,
-      }),
+      upsertIssue(shopId, product.id, "missing_sku", "Variant missing SKU", details),
     );
   }
   if ((product.media?.nodes?.length ?? 0) === 0) {
     jobs.push(
       upsertIssue(shopId, product.id, "no_media", "Product has no media", {
-        title: product.title,
+        ...details,
+        imageUrl: null,
       }),
     );
   }
@@ -78,8 +101,9 @@ export async function scanSingleProduct(
     query ProductScan($id: ID!) {
       product(id: $id) {
         id title descriptionHtml status
+        featuredImage { url }
         variants(first: 50) { nodes { id sku price } }
-        media(first: 5) { nodes { id } }
+        media(first: 5) { nodes { id preview { image { url } } } }
       }
     }`,
     { variables: { id: productGid } },
@@ -115,8 +139,9 @@ export async function scanProducts(
         pageInfo { hasNextPage endCursor }
         nodes {
           id title descriptionHtml status
+          featuredImage { url }
           variants(first: 50) { nodes { id sku price } }
-          media(first: 5) { nodes { id } }
+          media(first: 5) { nodes { id preview { image { url } } } }
         }
       }
     }`,
@@ -129,6 +154,6 @@ export async function scanProducts(
   }
   return {
     hasNextPage: Boolean(connection?.pageInfo?.hasNextPage),
-    endCursor: (connection?.pageInfo?.endCursor as string | null) ?? null,
+    endCursor: connection?.pageInfo?.endCursor as string | null,
   };
 }

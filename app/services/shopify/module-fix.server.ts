@@ -65,7 +65,13 @@ export async function resolveIssueByModule(module: string, issueId: number) {
   await resolveIssue(table, issueId);
 }
 
-export type FixResult = { ok: boolean; error?: string; skipMessage?: string };
+export type FixResult = {
+  ok: boolean;
+  error?: string;
+  skipMessage?: string;
+  preview?: string;
+  field?: string;
+};
 
 async function assertNoUserErrors(
   json: {
@@ -135,6 +141,46 @@ export async function applyManualFix(
           "Product image",
         );
         if (!uploaded.ok) throw new Error(uploaded.error);
+      } else if (field === "sku") {
+        const variantsRes = await admin.graphql(
+          `#graphql
+          query ($id: ID!) {
+            product(id: $id) {
+              variants(first: 50) { nodes { id sku } }
+            }
+          }`,
+          { variables: { id: row.resourceId } },
+        );
+        const vJson = await variantsRes.json();
+        const variants = (vJson.data?.product?.variants?.nodes ?? []) as {
+          id: string;
+          sku?: string | null;
+        }[];
+        const toUpdate = variants
+          .filter((v) => !v.sku?.trim())
+          .map((v, i) => ({
+            id: v.id,
+            inventoryItem: {
+              sku: i === 0 ? value : `${value}-${i + 1}`,
+            },
+          }));
+        if (toUpdate.length) {
+          const res = await admin.graphql(
+            `#graphql
+            mutation ($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+              productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+                userErrors { message field }
+              }
+            }`,
+            {
+              variables: {
+                productId: row.resourceId,
+                variants: toUpdate,
+              },
+            },
+          );
+          await assertNoUserErrors(await res.json(), "productVariantsBulkUpdate");
+        }
       } else {
         const input =
           field === "title"
@@ -206,6 +252,95 @@ export async function applyManualFix(
     const msg = await formatCaughtErrorAsync(error);
     await markFixDone(job.id, msg);
     return { ok: false, error: msg.slice(0, 180) || "fix_failed" };
+  }
+}
+
+/** Generate AI text for an issue without writing to Shopify — merchant reviews then saves. */
+export async function previewModuleFix(
+  admin: AdminApiContext,
+  shopId: number,
+  module: string,
+  issueId: number,
+): Promise<FixResult> {
+  const table = MODULE_TABLES[module];
+  if (!table) return { ok: false, error: "unknown_module" };
+  const [row] = await db.select().from(table).where(eq(table.id, issueId)).limit(1);
+  if (!row) return { ok: false, error: "no_issue" };
+  if (!row.resourceId) return { ok: false, error: "no_resource" };
+
+  if (module === "products" && row.issueCode === "no_media") {
+    return {
+      ok: false,
+      skipMessage:
+        "Upload an image file or paste an image URL, then Save. AI cannot invent product photos.",
+    };
+  }
+
+  try {
+    if (!(await hasAnyAiKey())) {
+      return {
+        ok: false,
+        error: "AI is not configured. Add an API key in Admin → AI providers.",
+      };
+    }
+    const plan = await getShopPlan(shopId);
+    await assertCanAiFix(shopId, plan);
+
+    if (module === "products") {
+      const ctx = await fetchProductAiContext(admin, row.resourceId);
+      if (!ctx) throw new Error("product_not_found");
+      if (row.issueCode === "missing_description") {
+        const descriptionHtml = await generateProductDescriptionHtml(ctx);
+        return { ok: true, preview: descriptionHtml, field: "descriptionHtml" };
+      }
+      if (row.issueCode === "missing_sku") {
+        const sku = suggestSku(ctx);
+        return { ok: true, preview: sku, field: "sku" };
+      }
+    }
+
+    if (module === "seo") {
+      const ctx = await fetchProductAiContext(admin, row.resourceId);
+      if (!ctx) throw new Error("product_not_found");
+      const seo = await generateSeo({
+        title: ctx.title,
+        description: ctx.descriptionText,
+        ctx,
+      });
+      const preview =
+        row.issueCode === "seo_description" ? seo.seoDescription : seo.seoTitle;
+      return {
+        ok: true,
+        preview,
+        field: row.issueCode === "seo_description" ? "seoDescription" : "seoTitle",
+      };
+    }
+
+    if (module === "collections" && row.issueCode === "missing_description") {
+      const descriptionHtml = await generateCollectionDescriptionHtml(
+        admin,
+        row.resourceId,
+      );
+      return { ok: true, preview: descriptionHtml, field: "descriptionHtml" };
+    }
+
+    if (module === "images" && row.issueCode === "missing_alt") {
+      const details = row.detailsJson ? JSON.parse(row.detailsJson) : {};
+      const result = await generateAltText({
+        productTitle: String(details.title || row.title || "Product"),
+        context: String(details.url || ""),
+      });
+      return { ok: true, preview: result.alt, field: "alt" };
+    }
+
+    return {
+      ok: false,
+      skipMessage: "Use Optimize / Save for this issue type, or open in Shopify.",
+    };
+  } catch (error) {
+    if (shouldRethrowResponse(error)) throw error;
+    await wipeSessionsIfForbidden(shopId, error);
+    return { ok: false, error: await formatCaughtErrorAsync(error) };
   }
 }
 

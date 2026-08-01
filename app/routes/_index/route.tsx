@@ -80,7 +80,6 @@ export default function Index() {
           <a href="#features">Features</a>
           <a href="#how">How it works</a>
           <Link to="/privacy">Privacy</Link>
-          <Link to="/admin/login">Admin</Link>
         </nav>
       </header>
 
@@ -185,7 +184,6 @@ export default function Index() {
         <span>© {new Date().getFullYear()} CorePilot AI · CoreWital</span>
         <span className={styles.footerLinks}>
           <Link to="/privacy">Privacy policy</Link>
-          <Link to="/admin/login">Admin login</Link>
         </span>
       </footer>
     </div>

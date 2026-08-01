@@ -6,6 +6,7 @@ import { db } from "../db/client";
 import { shops } from "../db/schema";
 import {
   applyManualFix,
+  previewModuleFix,
   runModuleFix,
 } from "../services/shopify/module-fix.server";
 import { rateLimit } from "../services/shopify/rate-limit.server";
@@ -48,6 +49,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const form = await request.formData();
     const manualValue = form.get("manualValue");
     const field = String(form.get("field") ?? "");
+    const intent = String(form.get("intent") ?? "apply");
 
     const ids = String(form.get("issueIds") ?? form.get("issueId") ?? "")
       .split(",")
@@ -60,6 +62,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     const started = Date.now();
     const job = await getShopJobState(shop.id);
+
+    if (intent === "preview" && ids.length === 1) {
+      const result = await previewModuleFix(admin, shop.id, module, ids[0]);
+      await logApiCall({
+        shopDomain: session.shop,
+        operation: `fix.${module}.preview`,
+        status: result.ok ? "ok" : "error",
+        durationMs: Date.now() - started,
+        errorMessage: result.ok ? null : (result.error ?? result.skipMessage ?? "preview_failed"),
+      });
+      return json(result, { status: result.ok ? 200 : 422 });
+    }
 
     if (manualValue !== null && ids.length === 1) {
       if (job.busy && job.type === "scan") {

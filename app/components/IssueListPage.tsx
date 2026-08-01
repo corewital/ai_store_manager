@@ -22,6 +22,7 @@ import { ResourceImage } from "./ResourceImage";
 import { ResourceDetailModal, type IssueRow } from "./ResourceDetailModal";
 import { HEALTH_NAV, SubNav, healthNavFor } from "./SubNav";
 import type { AppModuleVisibility } from "../services/admin/module-visibility";
+import { issueLabel, severityLabel } from "../lib/issue-labels";
 
 type Props = {
   title: string;
@@ -142,9 +143,9 @@ export function IssueListPage({
   };
 
   const headings = [
-    ...(showImage ? [{ title: "Image" }] : []),
-    { title: "Issue" },
-    { title: "Code" },
+    { title: "Image" },
+    { title: "Product / Issue" },
+    { title: "Type" },
     { title: "Severity" },
     { title: "Actions" },
   ];
@@ -225,28 +226,34 @@ export function IssueListPage({
                       position={index}
                       selected={selectedResources.includes(String(row.id))}
                     >
-                      {showImage && (
-                        <IndexTable.Cell>
-                          <ResourceImage
-                            src={row.imageUrl}
-                            alt={row.title}
-                            onClick={() => setActive(row)}
-                          />
-                        </IndexTable.Cell>
-                      )}
                       <IndexTable.Cell>
-                        <Button
-                          variant="plain"
+                        <ResourceImage
+                          src={row.imageUrl}
+                          alt={row.productTitle || row.title}
                           onClick={() => setActive(row)}
-                          textAlign="left"
-                        >
-                          {row.title}
-                        </Button>
+                        />
                       </IndexTable.Cell>
-                      <IndexTable.Cell>{row.issueCode}</IndexTable.Cell>
+                      <IndexTable.Cell>
+                        <BlockStack gap="100">
+                          <Button
+                            variant="plain"
+                            onClick={() => setActive(row)}
+                            textAlign="left"
+                          >
+                            {row.productTitle || row.title}
+                          </Button>
+                          <Text as="span" variant="bodySm" tone="subdued">
+                            {issueLabel(row.issueCode, row.title)}
+                            {row.sku ? ` · SKU ${row.sku}` : ""}
+                          </Text>
+                        </BlockStack>
+                      </IndexTable.Cell>
+                      <IndexTable.Cell>
+                        {issueLabel(row.issueCode)}
+                      </IndexTable.Cell>
                       <IndexTable.Cell>
                         <Badge tone={severityTone(row.severity)}>
-                          {row.severity ?? "medium"}
+                          {severityLabel(row.severity)}
                         </Badge>
                       </IndexTable.Cell>
                       <IndexTable.Cell>
@@ -263,10 +270,7 @@ export function IssueListPage({
                                 setActive(row);
                                 return;
                               }
-                              bulk.submit(
-                                { issueIds: String(row.id) },
-                                { method: "post", action: `/api/fix/${module}` },
-                              );
+                              setActive(row);
                             }}
                           >
                             {isNoMedia(row) ? "Upload" : fixLabel}
