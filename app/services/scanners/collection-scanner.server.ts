@@ -38,19 +38,32 @@ async function upsert(
   });
 }
 
-export async function scanCollections(shopId: number, admin: AdminApiContext) {
-  const res = await admin.graphql(`#graphql
-    query CollectionScan {
-      collections(first: 50) {
+export async function scanCollections(
+  shopId: number,
+  admin: AdminApiContext,
+  maxCollections?: number | null,
+) {
+  const first =
+    maxCollections == null
+      ? 50
+      : Math.min(50, Math.max(1, maxCollections));
+  const res = await admin.graphql(
+    `#graphql
+    query CollectionScan($first: Int!) {
+      collections(first: $first) {
         nodes {
           id title descriptionHtml
           image { url }
           productsCount { count }
         }
       }
-    }`);
+    }`,
+    { variables: { first } },
+  );
   const json = await res.json();
-  for (const c of json.data?.collections?.nodes ?? []) {
+  let nodes = json.data?.collections?.nodes ?? [];
+  if (maxCollections != null) nodes = nodes.slice(0, maxCollections);
+  for (const c of nodes) {
     const count = c.productsCount?.count ?? 0;
     const details = {
       productTitle: c.title,

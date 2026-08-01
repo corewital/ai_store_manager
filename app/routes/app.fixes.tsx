@@ -1,5 +1,6 @@
 ﻿import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { useFetcher, useLoaderData, useSearchParams } from "@remix-run/react";
+import { useState } from "react";
 import {
   Page,
   Card,
@@ -12,20 +13,101 @@ import {
   IndexTable,
   Pagination,
   Select,
+  Modal,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { and, count, desc, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { authenticate } from "../shopify.server";
 import { db } from "../db/client";
-import { fixQueue } from "../db/schema";
+import {
+  collectionIssues,
+  fixQueue,
+  imageIssues,
+  inventoryFlags,
+  productIssues,
+  seoIssues,
+} from "../db/schema";
 import { ensureShop } from "../services/shopify/shops.server";
 import { enqueueShopFixes } from "../services/shopify/shop-jobs.server";
 import { REPORTS_NAV, SubNav } from "../components/SubNav";
 import { requireAppModule } from "../services/shopify/require-module.server";
 import { merchantSafeError } from "../lib/errors.server";
 import { issueLabel } from "../lib/issue-labels";
+import { ResourceImage } from "../components/ResourceImage";
 
 const PAGE_SIZE = 15;
+
+type IssueLite = {
+  id: number;
+  title: string;
+  issueCode: string;
+  resourceId: string | null;
+  detailsJson: string | null;
+};
+
+function parseDetails(raw: string | null | undefined) {
+  if (!raw) return {} as Record<string, unknown>;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function shopifyLink(
+  shopDomain: string,
+  module: string,
+  resourceId?: string | null,
+  productId?: string | null,
+) {
+  const store = shopDomain.replace(/\.myshopify\.com$/i, "").split(".")[0];
+  if (!store) return null;
+  const num = (gid: string) => gid.split("/").pop() || gid;
+  if (productId) {
+    return `https://admin.shopify.com/store/${store}/products/${num(productId)}`;
+  }
+  if (!resourceId) return null;
+  if (module === "collections" || /Collection/i.test(resourceId)) {
+    return `https://admin.shopify.com/store/${store}/collections/${num(resourceId)}`;
+  }
+  if (/Product/i.test(resourceId) || module === "products" || module === "seo") {
+    return `https://admin.shopify.com/store/${store}/products/${num(resourceId)}`;
+  }
+  return `https://admin.shopify.com/store/${store}/products`;
+}
+
+async function loadIssuesByModule(
+  module: string,
+  ids: number[],
+): Promise<Map<number, IssueLite>> {
+  const map = new Map<number, IssueLite>();
+  if (ids.length === 0) return map;
+  const table =
+    module === "products"
+      ? productIssues
+      : module === "seo"
+        ? seoIssues
+        : module === "images"
+          ? imageIssues
+          : module === "collections"
+            ? collectionIssues
+            : module === "inventory"
+              ? inventoryFlags
+              : null;
+  if (!table) return map;
+  const rows = await db
+    .select({
+      id: table.id,
+      title: table.title,
+      issueCode: table.issueCode,
+      resourceId: table.resourceId,
+      detailsJson: table.detailsJson,
+    })
+    .from(table)
+    .where(inArray(table.id, ids));
+  for (const r of rows) map.set(r.id, r);
+  return map;
+}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -42,52 +124,63 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   ];
   if (status !== "all") conditions.push(eq(fixQueue.status, status));
 
-  const [{ total }] = await db
-    .select({ total: count() })
-    .from(fixQueue)
-    .where(and(...conditions));
+  const [[{ total }], jobs, [{ pending }], [{ done }], [{ failed }]] =
+    await Promise.all([
+      db.select({ total: count() }).from(fixQueue).where(and(...conditions)),
+      db.query.fixQueue.findMany({
+        where: and(...conditions),
+        orderBy: [desc(fixQueue.updatedAt)],
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+      }),
+      db
+        .select({ pending: count() })
+        .from(fixQueue)
+        .where(
+          and(
+            eq(fixQueue.shopId, shop.id),
+            eq(fixQueue.status, "pending"),
+            isNull(fixQueue.deletedAt),
+          ),
+        ),
+      db
+        .select({ done: count() })
+        .from(fixQueue)
+        .where(
+          and(
+            eq(fixQueue.shopId, shop.id),
+            eq(fixQueue.status, "done"),
+            isNull(fixQueue.deletedAt),
+          ),
+        ),
+      db
+        .select({ failed: count() })
+        .from(fixQueue)
+        .where(
+          and(
+            eq(fixQueue.shopId, shop.id),
+            eq(fixQueue.status, "failed"),
+            isNull(fixQueue.deletedAt),
+          ),
+        ),
+    ]);
 
-  const jobs = await db.query.fixQueue.findMany({
-    where: and(...conditions),
-    orderBy: [desc(fixQueue.updatedAt)],
-    limit: PAGE_SIZE,
-    offset: (page - 1) * PAGE_SIZE,
-  });
-
-  const [{ pending }] = await db
-    .select({ pending: count() })
-    .from(fixQueue)
-    .where(
-      and(
-        eq(fixQueue.shopId, shop.id),
-        eq(fixQueue.status, "pending"),
-        isNull(fixQueue.deletedAt),
-      ),
-    );
-
-  const [{ done }] = await db
-    .select({ done: count() })
-    .from(fixQueue)
-    .where(
-      and(
-        eq(fixQueue.shopId, shop.id),
-        eq(fixQueue.status, "done"),
-        isNull(fixQueue.deletedAt),
-      ),
-    );
-
-  const [{ failed }] = await db
-    .select({ failed: count() })
-    .from(fixQueue)
-    .where(
-      and(
-        eq(fixQueue.shopId, shop.id),
-        eq(fixQueue.status, "failed"),
-        isNull(fixQueue.deletedAt),
-      ),
-    );
+  const byModule = new Map<string, number[]>();
+  for (const j of jobs) {
+    if (j.issueId == null) continue;
+    const list = byModule.get(j.module) || [];
+    list.push(j.issueId);
+    byModule.set(j.module, list);
+  }
+  const issueMaps = new Map<string, Map<number, IssueLite>>();
+  await Promise.all(
+    [...byModule.entries()].map(async ([mod, ids]) => {
+      issueMaps.set(mod, await loadIssuesByModule(mod, ids));
+    }),
+  );
 
   return {
+    shopDomain: session.shop,
     pending,
     done,
     failed,
@@ -95,17 +188,58 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     page,
     pageSize: PAGE_SIZE,
     status,
-    jobs: jobs.map((j) => ({
-      id: j.id,
-      module: j.module,
-      action: j.action,
-      issueId: j.issueId,
-      status: j.status,
-      errorMessage: j.errorMessage ? merchantSafeError(j.errorMessage) : null,
-      payloadJson: j.payloadJson,
-      createdAt: j.createdAt ? new Date(j.createdAt).toISOString() : null,
-      updatedAt: j.updatedAt ? new Date(j.updatedAt).toISOString() : null,
-    })),
+    jobs: jobs.map((j) => {
+      const issue =
+        j.issueId != null
+          ? issueMaps.get(j.module)?.get(j.issueId)
+          : undefined;
+      const details = {
+        ...parseDetails(issue?.detailsJson),
+        ...parseDetails(j.payloadJson),
+      };
+      const productTitle =
+        (details.productTitle as string) ||
+        (details.title as string) ||
+        issue?.title ||
+        issueLabel(j.action, j.action);
+      const imageUrl =
+        (details.imageUrl as string) || (details.url as string) || null;
+      const before = (details.before as string) || null;
+      const after = (details.after as string) || null;
+      const field = (details.field as string) || null;
+      const resultShort =
+        j.status === "done"
+          ? after
+            ? String(after).slice(0, 80)
+            : "Saved to Shopify"
+          : j.errorMessage
+            ? merchantSafeError(j.errorMessage)
+            : "Waiting…";
+
+      return {
+        id: j.id,
+        module: j.module,
+        action: j.action,
+        status: j.status,
+        productTitle,
+        imageUrl,
+        sku: (details.sku as string) || null,
+        field,
+        before,
+        after,
+        resultShort,
+        errorMessage: j.errorMessage ? merchantSafeError(j.errorMessage) : null,
+        shopifyUrl: shopifyLink(
+          session.shop,
+          j.module,
+          issue?.resourceId || (details.resourceId as string) || null,
+          (details.productId as string) || null,
+        ),
+        issueCode: issue?.issueCode || null,
+        createdAt: j.createdAt ? new Date(j.createdAt).toISOString() : null,
+        updatedAt: j.updatedAt ? new Date(j.updatedAt).toISOString() : null,
+      };
+    }),
   };
 };
 
@@ -152,15 +286,18 @@ function toneFor(status: string) {
 function actionLabel(action?: string | null) {
   if (!action) return "Fix";
   if (action.startsWith("manual:")) return "Manual save";
-  if (action.startsWith("queued:")) return "Bulk queue";
+  if (action.startsWith("queued:")) return "Bulk fix";
   return issueLabel(action, action);
 }
+
+type JobRow = ReturnType<typeof useLoaderData<typeof loader>>["jobs"][number];
 
 export default function FixesPage() {
   const { pending, done, failed, total, page, pageSize, status, jobs } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const [params, setParams] = useSearchParams();
+  const [view, setView] = useState<JobRow | null>(null);
 
   const setPage = (p: number) => {
     const next = new URLSearchParams(params);
@@ -175,35 +312,32 @@ export default function FixesPage() {
   };
 
   return (
-    <Page>
+    <Page fullWidth>
       <TitleBar title="One-Click Fix" />
       <SubNav items={REPORTS_NAV} />
       <BlockStack gap="400">
         <Card>
           <BlockStack gap="200">
             <Text as="h2" variant="headingMd">
-              Fix queue & history
+              Fix history
             </Text>
             <Text as="p" tone="subdued">
-              Every AI or manual fix appears here with module, issue, status, and
-              result. Pending jobs can be run in bulk. Failed rows show a clear
-              merchant-safe reason — never raw API keys.
+              Review every AI and manual update — title, image, SKU, and what
+              changed. Open Shopify to confirm on the live product or collection.
             </Text>
             <InlineStack gap="200" wrap>
               <Badge tone="attention">{`${pending} pending`}</Badge>
               <Badge tone="success">{`${done} completed`}</Badge>
               <Badge tone="critical">{`${failed} failed`}</Badge>
-              <Text as="span" tone="subdued" variant="bodySm">
-                {total} total jobs
-              </Text>
             </InlineStack>
           </BlockStack>
         </Card>
 
         {fetcher.data?.ok && (
           <Banner tone="success">
-            Processed {(fetcher.data as { queued?: number }).queued ?? 0} fix
-            job(s).
+            Started {(fetcher.data as { queued?: number }).queued ?? 0} fix
+            {(fetcher.data as { queued?: number }).queued === 1 ? "" : "es"}. We’ll
+            finish them in the background.
           </Banner>
         )}
 
@@ -237,62 +371,98 @@ export default function FixesPage() {
           {jobs.length === 0 ? (
             <div style={{ padding: "1.25rem" }}>
               <Text as="p" tone="subdued">
-                No fix jobs yet. Run a store scan, then open Products / SEO /
-                Images and use Fix — they will appear here with full detail.
+                No fixes yet. Open Products, SEO, Images, or Collections, preview
+                a fix, then save — it will show up here.
               </Text>
             </div>
           ) : (
             <>
               <IndexTable
-                resourceName={{ singular: "job", plural: "jobs" }}
+                resourceName={{ singular: "fix", plural: "fixes" }}
                 itemCount={jobs.length}
                 selectable={false}
                 headings={[
-                  { title: "Module" },
+                  { title: "Item" },
                   { title: "What ran" },
-                  { title: "Issue #" },
                   { title: "Status" },
-                  { title: "Result / change" },
-                  { title: "Created" },
+                  { title: "Result" },
                   { title: "Updated" },
+                  { title: "" },
                 ]}
               >
                 {jobs.map((j, i) => (
                   <IndexTable.Row id={String(j.id)} key={j.id} position={i}>
                     <IndexTable.Cell>
-                      <Text as="span" fontWeight="semibold">
-                        {j.module}
-                      </Text>
+                      <InlineStack gap="300" blockAlign="center">
+                        <ResourceImage
+                          src={j.imageUrl}
+                          alt={j.productTitle}
+                          size={44}
+                        />
+                        <BlockStack gap="050">
+                          <Text as="span" fontWeight="semibold">
+                            {j.productTitle}
+                          </Text>
+                          <Text as="span" tone="subdued" variant="bodySm">
+                            {j.module}
+                            {j.sku ? ` · SKU ${j.sku}` : ""}
+                            {j.issueCode
+                              ? ` · ${issueLabel(j.issueCode)}`
+                              : ""}
+                          </Text>
+                        </BlockStack>
+                      </InlineStack>
                     </IndexTable.Cell>
                     <IndexTable.Cell>{actionLabel(j.action)}</IndexTable.Cell>
-                    <IndexTable.Cell>
-                      {j.issueId != null ? `#${j.issueId}` : "—"}
-                    </IndexTable.Cell>
                     <IndexTable.Cell>
                       <Badge tone={toneFor(j.status)}>{j.status}</Badge>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
                       <Text as="span" tone="subdued" variant="bodySm">
-                        {j.status === "done"
-                          ? "Applied to Shopify"
-                          : j.errorMessage || "—"}
+                        {j.resultShort}
+                        {(j.before || j.after) &&
+                        String(j.after || j.before || "").length > 80
+                          ? "…"
+                          : ""}
                       </Text>
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>
-                      {j.createdAt
-                        ? new Date(j.createdAt).toLocaleString()
-                        : "—"}
                     </IndexTable.Cell>
                     <IndexTable.Cell>
                       {j.updatedAt
                         ? new Date(j.updatedAt).toLocaleString()
                         : "—"}
                     </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <InlineStack gap="200">
+                        <Button size="slim" onClick={() => setView(j)}>
+                          View
+                        </Button>
+                        {j.shopifyUrl && (
+                          <Button
+                            size="slim"
+                            onClick={() =>
+                              window.open(
+                                j.shopifyUrl!,
+                                "_blank",
+                                "noopener,noreferrer",
+                              )
+                            }
+                          >
+                            Shopify
+                          </Button>
+                        )}
+                      </InlineStack>
+                    </IndexTable.Cell>
                   </IndexTable.Row>
                 ))}
               </IndexTable>
               {total > pageSize && (
-                <div style={{ padding: "0.85rem", display: "flex", justifyContent: "center" }}>
+                <div
+                  style={{
+                    padding: "0.85rem",
+                    display: "flex",
+                    justifyContent: "center",
+                  }}
+                >
                   <Pagination
                     hasPrevious={page > 1}
                     onPrevious={() => setPage(page - 1)}
@@ -305,6 +475,81 @@ export default function FixesPage() {
           )}
         </Card>
       </BlockStack>
+
+      <Modal
+        open={Boolean(view)}
+        onClose={() => setView(null)}
+        title={view?.productTitle || "Fix details"}
+        primaryAction={{ content: "Close", onAction: () => setView(null) }}
+        secondaryActions={
+          view?.shopifyUrl
+            ? [
+                {
+                  content: "Open in Shopify",
+                  onAction: () =>
+                    window.open(
+                      view.shopifyUrl!,
+                      "_blank",
+                      "noopener,noreferrer",
+                    ),
+                },
+              ]
+            : []
+        }
+      >
+        {view && (
+          <Modal.Section>
+            <BlockStack gap="300">
+              <InlineStack gap="300" blockAlign="start">
+                <ResourceImage
+                  src={view.imageUrl}
+                  alt={view.productTitle}
+                  size={72}
+                />
+                <BlockStack gap="100">
+                  <Badge tone={toneFor(view.status)}>{view.status}</Badge>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    {view.module} · {actionLabel(view.action)}
+                    {view.field ? ` · ${view.field}` : ""}
+                  </Text>
+                  {view.sku && (
+                    <Text as="p" variant="bodySm">
+                      SKU: {view.sku}
+                    </Text>
+                  )}
+                </BlockStack>
+              </InlineStack>
+              {view.before && (
+                <BlockStack gap="100">
+                  <Text as="h3" variant="headingSm">
+                    Before
+                  </Text>
+                  <Text as="p" tone="subdued">
+                    {view.before}
+                  </Text>
+                </BlockStack>
+              )}
+              {view.after && (
+                <BlockStack gap="100">
+                  <Text as="h3" variant="headingSm">
+                    After / saved value
+                  </Text>
+                  <Text as="p">{view.after}</Text>
+                </BlockStack>
+              )}
+              {view.errorMessage && (
+                <Banner tone="critical">{view.errorMessage}</Banner>
+              )}
+              <Text as="p" variant="bodySm" tone="subdued">
+                Updated{" "}
+                {view.updatedAt
+                  ? new Date(view.updatedAt).toLocaleString()
+                  : "—"}
+              </Text>
+            </BlockStack>
+          </Modal.Section>
+        )}
+      </Modal>
     </Page>
   );
 }

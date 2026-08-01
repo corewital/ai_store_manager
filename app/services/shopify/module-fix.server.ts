@@ -123,12 +123,46 @@ export async function applyManualFix(
   if (!row) return { ok: false, error: "no_issue" };
   if (!row.resourceId) return { ok: false, error: "no_resource" };
 
+  const plan = await getShopPlan(shopId);
+  try {
+    await assertCanAiFix(shopId, plan);
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Fix limit reached. Upgrade your plan.",
+    };
+  }
+
   const job = await enqueueFix({
     shopId,
     module,
     issueId: row.id,
     action: `manual:${field || row.issueCode}`,
   });
+
+  let details: Record<string, unknown> = {};
+  try {
+    details = row.detailsJson ? JSON.parse(row.detailsJson) : {};
+  } catch {
+    details = {};
+  }
+  const historyPayload = {
+    field: field || row.issueCode,
+    before:
+      (details.currentValue as string) ||
+      (details.current as string) ||
+      null,
+    after: value,
+    imageUrl: (details.imageUrl as string) || (details.url as string) || null,
+    productTitle:
+      (details.productTitle as string) ||
+      (details.title as string) ||
+      row.title,
+    sku: (details.sku as string) || null,
+    productId: (details.productId as string) || null,
+    resourceId: row.resourceId,
+    issueCode: row.issueCode,
+  };
 
   try {
     if (module === "products") {
@@ -220,7 +254,6 @@ export async function applyManualFix(
       );
       await assertNoUserErrors(await res.json(), "collectionUpdate");
     } else if (module === "images") {
-      const details = row.detailsJson ? JSON.parse(row.detailsJson) : {};
       if (!details.productId) throw new Error("missing productId");
       const res = await admin.graphql(
         `#graphql
@@ -239,18 +272,18 @@ export async function applyManualFix(
       await assertNoUserErrors(await res.json(), "productUpdateMedia");
     } else {
       await resolveIssue(table, row.id);
-      await markFixDone(job.id);
+      await markFixDone(job.id, undefined, historyPayload);
       return { ok: true };
     }
 
     await resolveIssue(table, row.id);
-    await markFixDone(job.id);
+    await markFixDone(job.id, undefined, historyPayload);
     return { ok: true };
   } catch (error) {
     if (shouldRethrowResponse(error)) throw error;
     await wipeSessionsIfForbidden(shopId, error);
     const msg = await formatCaughtErrorAsync(error);
-    await markFixDone(job.id, msg);
+    await markFixDone(job.id, msg, historyPayload);
     return { ok: false, error: msg.slice(0, 180) || "fix_failed" };
   }
 }
@@ -567,7 +600,24 @@ export async function runModuleFix(
     }
 
     await resolveIssue(table, row.id);
-    await markFixDone(job.id);
+    {
+      let d: Record<string, unknown> = {};
+      try {
+        d = row.detailsJson ? JSON.parse(row.detailsJson) : {};
+      } catch {
+        d = {};
+      }
+      await markFixDone(job.id, undefined, {
+        imageUrl: (d.imageUrl as string) || (d.url as string) || null,
+        productTitle:
+          (d.productTitle as string) || (d.title as string) || row.title,
+        sku: (d.sku as string) || null,
+        productId: (d.productId as string) || null,
+        resourceId: row.resourceId,
+        issueCode: row.issueCode,
+        field: row.issueCode,
+      });
+    }
     return { ok: true };
   } catch (error) {
     if (shouldRethrowResponse(error)) throw error;

@@ -111,17 +111,17 @@ export function IssueListPage({
     if (bulk.state === "idle" && bulk.data) {
       if (bulk.data.queued) {
         setNotice(
-          `Queued ${bulk.data.succeeded ?? 0} fix(es) — cron will process. Buttons unlock when the job finishes.`,
+          `Started ${bulk.data.succeeded ?? 0} fix${(bulk.data.succeeded ?? 0) === 1 ? "" : "es"}. We’ll finish them in the background — this page updates when they’re done.`,
         );
       } else if (bulk.data.error || bulk.data.ok === false) {
-        setNotice(bulk.data.error || "Fix failed.");
+        setNotice(bulk.data.error || "Fix could not be completed. Please try again.");
       } else {
         const done = bulk.data.succeeded ?? 0;
         const failed = bulk.data.failed ?? 0;
         setNotice(
           failed > 0
-            ? `Fixed ${done}, ${failed} failed.`
-            : `Fixed ${done} issue${done === 1 ? "" : "s"}.`,
+            ? `Updated ${done} item${done === 1 ? "" : "s"}. ${failed} need another look.`
+            : `Updated ${done} item${done === 1 ? "" : "s"} successfully.`,
         );
       }
       load();

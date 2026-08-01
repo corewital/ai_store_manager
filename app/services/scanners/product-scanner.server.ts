@@ -131,6 +131,7 @@ export async function scanProducts(
   shopId: number,
   admin: Admin,
   cursor?: string | null,
+  maxTake?: number,
 ) {
   const res = await admin.graphql(
     `#graphql
@@ -149,11 +150,17 @@ export async function scanProducts(
   );
   const json = await res.json();
   const connection = json.data?.products;
-  for (const product of (connection?.nodes ?? []) as ProductNode[]) {
+  const nodes = (connection?.nodes ?? []) as ProductNode[];
+  const take =
+    maxTake != null && Number.isFinite(maxTake)
+      ? nodes.slice(0, Math.max(0, maxTake))
+      : nodes;
+  for (const product of take) {
     await detectProductIssues(shopId, product);
   }
   return {
-    hasNextPage: Boolean(connection?.pageInfo?.hasNextPage),
+    scanned: take.length,
+    hasNextPage: Boolean(connection?.pageInfo?.hasNextPage) && take.length === nodes.length,
     endCursor: connection?.pageInfo?.endCursor as string | null,
   };
 }

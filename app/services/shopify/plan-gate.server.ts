@@ -98,7 +98,12 @@ function staticFeatures(planSlug: string): FeatureRow[] {
     {
       featureKey: "email_reports",
       limitValue: null,
-      enabled: planRank(planSlug) >= planRank("professional"),
+      enabled: false, // Coming later — hidden from merchants for now
+    },
+    {
+      featureKey: "scheduled_reports",
+      limitValue: null,
+      enabled: false,
     },
   ];
 }
@@ -116,8 +121,15 @@ export async function getPlanLimit(
 ): Promise<number | null> {
   const map = await getPlanFeatureMap(planSlug);
   const row = map.get(key);
-  if (!row || !row.enabled) return 0;
-  return row.limitValue;
+  const fallback = staticFeatures(planSlug).find((r) => r.featureKey === key);
+  if (!row) {
+    if (!fallback) return key.startsWith("module_") ? null : 0;
+    return fallback.enabled ? fallback.limitValue : 0;
+  }
+  if (!row.enabled) return 0;
+  // DB null → use static PLANS (so seed "unlimited" can pick up new paid scan caps)
+  if (row.limitValue != null) return row.limitValue;
+  return fallback?.limitValue ?? null;
 }
 
 export async function isPlanFeatureEnabled(
@@ -164,14 +176,15 @@ export async function getPlanUsage(shopId: number) {
   };
 }
 
-/** Assert shop can start a manual scan; increments counter on Free. */
+/** Assert shop can start a manual scan (lifetime counter; Free = total only). */
 export async function assertCanScan(shopId: number, planSlug: string) {
   const limit = await getPlanLimit(planSlug, "manual_scans_limit");
-  if (limit == null) return; // unlimited / cadence plan
+  if (limit == null) return; // enterprise / unlimited
   const usage = await getPlanUsage(shopId);
   if (usage.manualScansUsed >= limit) {
+    const name = PLANS[planSlug as PlanSlug]?.name ?? "Your";
     throw new PlanGateError(
-      `Free plan allows ${limit} manual scans. Upgrade to scan again.`,
+      `${name} plan includes ${limit} manual scan${limit === 1 ? "" : "s"}. Upgrade to scan again.`,
     );
   }
 }
@@ -196,7 +209,7 @@ export async function assertCanAiFix(shopId: number, planSlug: string) {
   const usage = await getPlanUsage(shopId);
   if (usage.aiFixesUsed >= limit) {
     throw new PlanGateError(
-      `AI fix limit reached (${limit}). Upgrade your plan to continue.`,
+      `You've used all ${limit} fixes on your plan (AI and manual). Upgrade to continue.`,
     );
   }
 }

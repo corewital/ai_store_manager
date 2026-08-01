@@ -1,16 +1,6 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
-import {
-  Page,
-  Card,
-  Text,
-  BlockStack,
-  InlineGrid,
-  Badge,
-  Button,
-  InlineStack,
-  ProgressBar,
-} from "@shopify/polaris";
+import type { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
+import { Link, useLoaderData } from "@remix-run/react";
+import { Page, Text, Badge, Button } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { and, count, eq, isNull } from "drizzle-orm";
 import { authenticate } from "../shopify.server";
@@ -34,6 +24,9 @@ import { ScoreGauge } from "../components/ScoreGauge";
 import { requireAppModule } from "../services/shopify/require-module.server";
 import type { AppModuleVisibility } from "../services/admin/module-visibility";
 import { getCatalogCounts } from "../services/shopify/catalog.server";
+import healthCss from "../styles/health.css?url";
+
+export const links: LinksFunction = () => [{ rel: "stylesheet", href: healthCss }];
 
 const MODULES: {
   key: HealthCategory;
@@ -83,18 +76,32 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const modules = await requireAppModule("health");
   const { session, admin } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop, session.accessToken);
-  const score = await computeHealthScore(shop.id);
-  const catalog = await getCatalogCounts(admin);
-  const issueCounts = {
-    products: await openCount(productIssues, shop.id),
-    seo: await openCount(seoIssues, shop.id),
-    images: await openCount(imageIssues, shop.id),
-    inventory: await openCount(inventoryFlags, shop.id),
-    collections: await openCount(collectionIssues, shop.id),
-    navigation: await openCount(navigationIssues, shop.id),
-    theme: await openCount(themeIssues, shop.id),
+  const [score, catalog, products, seo, images, inventory, collections, navigation, theme] =
+    await Promise.all([
+      computeHealthScore(shop.id),
+      getCatalogCounts(admin),
+      openCount(productIssues, shop.id),
+      openCount(seoIssues, shop.id),
+      openCount(imageIssues, shop.id),
+      openCount(inventoryFlags, shop.id),
+      openCount(collectionIssues, shop.id),
+      openCount(navigationIssues, shop.id),
+      openCount(themeIssues, shop.id),
+    ]);
+  return {
+    score,
+    modules,
+    catalog,
+    issueCounts: {
+      products,
+      seo,
+      images,
+      inventory,
+      collections,
+      navigation,
+      theme,
+    },
   };
-  return { score, issueCounts, modules, catalog };
 };
 
 export default function HealthOverview() {
@@ -103,35 +110,37 @@ export default function HealthOverview() {
     const key = m.key as keyof AppModuleVisibility;
     return modules[key] !== false;
   });
+  const totalOpen = Object.values(issueCounts).reduce((a, b) => a + b, 0);
 
   return (
-    <Page>
+    <Page fullWidth>
       <TitleBar title="Store Health" />
       <SubNav items={healthNavFor(modules)} />
-      <BlockStack gap="500">
-        <Card>
-          <InlineStack gap="500" blockAlign="center" align="start">
-            <ScoreGauge value={score.overall} />
-            <BlockStack gap="200">
-              <Text as="h2" variant="headingLg">
-                Overall health
-              </Text>
-              <Text as="p" tone="subdued">
-                {catalog.products.toLocaleString()} products ·{" "}
-                {catalog.collections.toLocaleString()} collections. Fix open
-                problems to grow conversions.
-              </Text>
-              <InlineStack gap="200">
-                <Button url="/app/fixes" variant="primary">
-                  One-Click Fix
-                </Button>
-                <Button url="/app">Back to Dashboard</Button>
-              </InlineStack>
-            </BlockStack>
-          </InlineStack>
-        </Card>
+      <div className="cp-health">
+        <section className="cp-health-hero">
+          <div className="cp-health-hero__glow" aria-hidden />
+          <ScoreGauge value={score.overall} size={140} />
+          <div className="cp-health-hero__copy">
+            <Text as="h2" variant="headingXl">
+              Overall health {score.overall}
+            </Text>
+            <Text as="p" tone="subdued">
+              {catalog.products.toLocaleString()} products ·{" "}
+              {catalog.collections.toLocaleString()} collections · {totalOpen} open
+              issue{totalOpen === 1 ? "" : "s"}
+            </Text>
+            <div className="cp-health-hero__actions">
+              <Link to="/app/fixes">
+                <Button variant="primary">One-Click Fix</Button>
+              </Link>
+              <Link to="/app">
+                <Button>Dashboard</Button>
+              </Link>
+            </div>
+          </div>
+        </section>
 
-        <InlineGrid columns={{ xs: 1, sm: 2, md: 3 }} gap="300">
+        <div className="cp-health-grid">
           {visibleModules.map(({ key, label, href, countKey }) => {
             const open = countKey ? issueCounts[countKey] : 0;
             const total =
@@ -144,45 +153,28 @@ export default function HealthOverview() {
               total > 0
                 ? Math.round(((total - Math.min(open, total)) / total) * 100)
                 : score[key];
-            const tone =
-              open === 0 && score[key] >= 90
-                ? ("success" as const)
-                : open > 0
-                  ? ("warning" as const)
-                  : ("info" as const);
             return (
-              <Card key={key}>
-                <BlockStack gap="200">
-                  <InlineStack align="space-between">
-                    <Text as="h3" variant="headingSm">
-                      {label}
-                    </Text>
-                    <Badge tone={tone}>
-                      {open === 0 ? "Healthy" : `${open} Problems`}
-                    </Badge>
-                  </InlineStack>
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    {total > 0
-                      ? `${total.toLocaleString()} total · ${open} problems`
-                      : `${open} problems`}
-                  </Text>
-                  <Text as="p" variant="headingLg">
-                    Score {score[key]}
-                  </Text>
-                  <ProgressBar
-                    progress={clearPct}
-                    size="small"
-                    tone={open > 0 ? "critical" : "primary"}
-                  />
-                  <Button url={href} size="slim" fullWidth>
-                    Review &amp; fix
-                  </Button>
-                </BlockStack>
-              </Card>
+              <Link key={key} to={href} className={`cp-health-card${open > 0 ? " has-issues" : ""}`}>
+                <div className="cp-health-card__top">
+                  <span className="cp-health-card__label">{label}</span>
+                  <Badge tone={open > 0 ? "warning" : "success"}>
+                    {open === 0 ? "Healthy" : `${open} open`}
+                  </Badge>
+                </div>
+                <p className="cp-health-card__score">{score[key]}</p>
+                <p className="cp-health-card__meta">
+                  {total > 0
+                    ? `${total.toLocaleString()} total · ${clearPct}% clear`
+                    : `${open} to review`}
+                </p>
+                <div className="cp-health-bar">
+                  <span style={{ width: `${clearPct}%` }} />
+                </div>
+              </Link>
             );
           })}
-        </InlineGrid>
-      </BlockStack>
+        </div>
+      </div>
     </Page>
   );
 }

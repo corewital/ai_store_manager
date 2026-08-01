@@ -115,26 +115,51 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   ]);
 
   const issueCounts = {
-    products: await openCount(productIssues, shop.id),
-    seo: await openCount(seoIssues, shop.id),
-    images: await openCount(imageIssues, shop.id),
-    inventory: await openCount(inventoryFlags, shop.id),
-    collections: await openCount(collectionIssues, shop.id),
-    navigation: await openCount(navigationIssues, shop.id),
-    theme: await openCount(themeIssues, shop.id),
+    products: 0,
+    seo: 0,
+    images: 0,
+    inventory: 0,
+    collections: 0,
+    navigation: 0,
+    theme: 0,
   };
-  const totalOpen = Object.values(issueCounts).reduce((a, b) => a + b, 0);
-
-  const [{ pendingFixes }] = await db
-    .select({ pendingFixes: count() })
-    .from(fixQueue)
-    .where(
-      and(
-        eq(fixQueue.shopId, shop.id),
-        eq(fixQueue.status, "pending"),
-        isNull(fixQueue.deletedAt),
+  const [
+    productsN,
+    seoN,
+    imagesN,
+    inventoryN,
+    collectionsN,
+    navigationN,
+    themeN,
+    pendingRow,
+  ] = await Promise.all([
+    openCount(productIssues, shop.id),
+    openCount(seoIssues, shop.id),
+    openCount(imageIssues, shop.id),
+    openCount(inventoryFlags, shop.id),
+    openCount(collectionIssues, shop.id),
+    openCount(navigationIssues, shop.id),
+    openCount(themeIssues, shop.id),
+    db
+      .select({ pendingFixes: count() })
+      .from(fixQueue)
+      .where(
+        and(
+          eq(fixQueue.shopId, shop.id),
+          eq(fixQueue.status, "pending"),
+          isNull(fixQueue.deletedAt),
+        ),
       ),
-    );
+  ]);
+  issueCounts.products = productsN;
+  issueCounts.seo = seoN;
+  issueCounts.images = imagesN;
+  issueCounts.inventory = inventoryN;
+  issueCounts.collections = collectionsN;
+  issueCounts.navigation = navigationN;
+  issueCounts.theme = themeN;
+  const totalOpen = Object.values(issueCounts).reduce((a, b) => a + b, 0);
+  const pendingFixes = pendingRow[0]?.pendingFixes ?? 0;
 
   return {
     shopDomain: session.shop,

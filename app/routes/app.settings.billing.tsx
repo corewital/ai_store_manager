@@ -178,7 +178,7 @@ export default function SettingsBillingPage() {
               <div>
                 <InlineStack align="space-between">
                   <Text as="span" variant="bodySm">
-                    AI fixes
+                    Fixes used (AI + manual)
                   </Text>
                   <Text as="span" variant="bodySm" tone="subdued">
                     {usage.aiFixesUsed}
@@ -193,7 +193,7 @@ export default function SettingsBillingPage() {
               <div>
                 <InlineStack align="space-between">
                   <Text as="span" variant="bodySm">
-                    Manual scans
+                    Manual scans (plan total)
                   </Text>
                   <Text as="span" variant="bodySm" tone="subdued">
                     {usage.manualScansUsed}
@@ -241,11 +241,6 @@ export default function SettingsBillingPage() {
                     )}
                   </InlineStack>
                   <p className="cp-plan-card__price">{formatPrice(p.priceCents)}</p>
-                  <p className="cp-plan-card__meta">
-                    {p.productLimit
-                      ? `Up to ${p.productLimit} products · ${p.collectionLimit} collections`
-                      : "Unlimited products & collections"}
-                  </p>
                   <ul className="cp-plan-card__features">
                     {p.features.map((f) => (
                       <li key={f}>{f}</li>
