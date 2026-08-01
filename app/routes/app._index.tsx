@@ -192,7 +192,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await assertCanScan(shop.id, plan);
     const result = await enqueueShopScan(shop.id);
     if (!result.ok) return { ok: false, error: result.error };
-    await recordManualScan(shop.id);
+    await recordManualScan(shop.id, plan);
     return {
       ok: true,
       queued: true,

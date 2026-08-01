@@ -153,7 +153,10 @@ export async function isPlanFeatureEnabled(
   return row.enabled;
 }
 
-export async function getPlanUsage(shopId: number) {
+export async function getPlanUsage(shopId: number, planSlug?: string) {
+  if (planSlug) {
+    await syncManualScanPeriod(shopId, planSlug);
+  }
   const settings = await db.query.appSettings.findFirst({
     where: eq(appSettings.shopId, shopId),
   });
@@ -172,32 +175,109 @@ export async function getPlanUsage(shopId: number) {
 
   return {
     manualScansUsed: Number(settings?.manualScanCount ?? 0),
+    manualScanPeriodKey: settings?.manualScanPeriodKey ?? null,
     aiFixesUsed: Number(aiUsed ?? 0),
   };
 }
 
-/** Assert shop can start a manual scan (lifetime counter; Free = total only). */
+type ManualPeriod = "lifetime" | "month" | "week" | "day";
+
+function manualPeriodForPlan(planSlug: string): ManualPeriod {
+  const cadence = PLANS[planSlug as PlanSlug]?.scanCadence ?? "manual";
+  if (cadence === "monthly") return "month";
+  if (cadence === "weekly") return "week";
+  if (cadence === "daily") return "day";
+  return "lifetime";
+}
+
+/** Stable key for the current manual-scan window (auto scans never use this). */
+export function currentManualScanPeriodKey(
+  planSlug: string,
+  now = new Date(),
+): string {
+  const period = manualPeriodForPlan(planSlug);
+  if (period === "lifetime") return "lifetime";
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(now.getUTCDate()).padStart(2, "0");
+  if (period === "month") return `${y}-${m}`;
+  if (period === "day") return `${y}-${m}-${d}`;
+  // week = Monday UTC
+  const day = new Date(Date.UTC(y, now.getUTCMonth(), now.getUTCDate()));
+  const dow = day.getUTCDay() || 7;
+  day.setUTCDate(day.getUTCDate() - dow + 1);
+  return day.toISOString().slice(0, 10);
+}
+
+function renewLabel(planSlug: string): string {
+  const period = manualPeriodForPlan(planSlug);
+  if (period === "month") return "They renew next month.";
+  if (period === "week") return "They renew next week.";
+  if (period === "day") return "They renew tomorrow.";
+  return "Upgrade your plan to scan again.";
+}
+
+/**
+ * Roll manual scan counter into the current period.
+ * Auto / cron scans must NEVER call this — only Scan Now (manual).
+ */
+async function syncManualScanPeriod(shopId: number, planSlug: string) {
+  const settings = await db.query.appSettings.findFirst({
+    where: eq(appSettings.shopId, shopId),
+  });
+  if (!settings) return { count: 0, periodKey: currentManualScanPeriodKey(planSlug) };
+
+  const periodKey = currentManualScanPeriodKey(planSlug);
+  const stored = settings.manualScanPeriodKey || "lifetime";
+  if (stored === periodKey) {
+    return { count: Number(settings.manualScanCount ?? 0), periodKey };
+  }
+  await db
+    .update(appSettings)
+    .set({
+      manualScanCount: 0,
+      manualScanPeriodKey: periodKey,
+      updatedAt: new Date(),
+    })
+    .where(eq(appSettings.shopId, shopId));
+  return { count: 0, periodKey };
+}
+
+/** Assert shop can start a manual Scan Now (auto scans are separate). */
 export async function assertCanScan(shopId: number, planSlug: string) {
   const limit = await getPlanLimit(planSlug, "manual_scans_limit");
   if (limit == null) return; // enterprise / unlimited
-  const usage = await getPlanUsage(shopId);
-  if (usage.manualScansUsed >= limit) {
+  const { count } = await syncManualScanPeriod(shopId, planSlug);
+  if (count >= limit) {
     const name = PLANS[planSlug as PlanSlug]?.name ?? "Your";
+    const period = manualPeriodForPlan(planSlug);
+    const window =
+      period === "month"
+        ? "this month"
+        : period === "week"
+          ? "this week"
+          : period === "day"
+            ? "today"
+            : "on this plan";
     throw new PlanGateError(
-      `${name} plan includes ${limit} manual scan${limit === 1 ? "" : "s"}. Upgrade to scan again.`,
+      `${name} plan allows ${limit} manual scan${limit === 1 ? "" : "s"} ${window}. ${renewLabel(planSlug)}`,
     );
   }
 }
 
-export async function recordManualScan(shopId: number) {
+/** Count a merchant Scan Now only — never call from cron / auto scan. */
+export async function recordManualScan(shopId: number, planSlug?: string) {
   const settings = await db.query.appSettings.findFirst({
     where: eq(appSettings.shopId, shopId),
   });
   if (!settings) return;
+  const plan = planSlug || "free";
+  const { count, periodKey } = await syncManualScanPeriod(shopId, plan);
   await db
     .update(appSettings)
     .set({
-      manualScanCount: Number(settings.manualScanCount ?? 0) + 1,
+      manualScanCount: count + 1,
+      manualScanPeriodKey: periodKey,
       updatedAt: new Date(),
     })
     .where(eq(appSettings.shopId, shopId));

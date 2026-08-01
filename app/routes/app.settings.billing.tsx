@@ -42,17 +42,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   const plan = await syncSubscription(admin, shop.id);
-  const usage = await getPlanUsage(shop.id);
+  const usage = await getPlanUsage(shop.id, plan);
   const [productLimit, aiLimit, scanLimit] = await Promise.all([
     getPlanLimit(plan, "products_limit"),
     getPlanLimit(plan, "ai_fixes_limit"),
     getPlanLimit(plan, "manual_scans_limit"),
   ]);
+  const scanCadence = PLANS[(plan in PLANS ? plan : "free") as PlanSlug].scanCadence;
+  const manualWindow =
+    scanCadence === "monthly"
+      ? "this month"
+      : scanCadence === "weekly"
+        ? "this week"
+        : scanCadence === "daily"
+          ? "today"
+          : "lifetime";
   return {
     plan,
     shopDomain: session.shop,
     usage,
     limits: { productLimit, aiLimit, scanLimit },
+    manualWindow,
     billingTest: process.env.NODE_ENV !== "production",
   };
 };
@@ -93,7 +103,7 @@ function usagePct(used: number, limit: number | null) {
 }
 
 export default function SettingsBillingPage() {
-  const { plan: currentPlan, shopDomain, usage, limits, billingTest } =
+  const { plan: currentPlan, shopDomain, usage, limits, billingTest, manualWindow } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const [params] = useSearchParams();
@@ -193,7 +203,7 @@ export default function SettingsBillingPage() {
               <div>
                 <InlineStack align="space-between">
                   <Text as="span" variant="bodySm">
-                    Manual scans (plan total)
+                    Manual scans ({manualWindow})
                   </Text>
                   <Text as="span" variant="bodySm" tone="subdued">
                     {usage.manualScansUsed}

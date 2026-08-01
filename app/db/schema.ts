@@ -120,8 +120,10 @@ export const appSettings = sqliteTable("app_settings", {
   jobMessage: text("job_message"),
   jobStartedAt: integer("job_started_at", { mode: "timestamp_ms" }),
   jobFinishedAt: integer("job_finished_at", { mode: "timestamp_ms" }),
-  /** Free-plan manual scan counter (admin-editable limit via plan_features). */
+  /** Manual Scan Now counter (period-based for paid; lifetime for Free). */
   manualScanCount: integer("manual_scan_count").notNull().default(0),
+  /** Period key for manual scans: lifetime | YYYY-MM | YYYY-MM-DD (week start) | YYYY-MM-DD */
+  manualScanPeriodKey: text("manual_scan_period_key"),
   ...timestamps,
 });
 

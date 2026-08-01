@@ -23,6 +23,11 @@ async function main() {
       ddl: "ALTER TABLE app_settings ADD COLUMN manual_scan_count integer NOT NULL DEFAULT 0",
     },
     {
+      table: "app_settings",
+      column: "manual_scan_period_key",
+      ddl: "ALTER TABLE app_settings ADD COLUMN manual_scan_period_key text",
+    },
+    {
       table: "sessions",
       column: "refresh_token",
       ddl: "ALTER TABLE sessions ADD COLUMN refresh_token text",
