@@ -1,5 +1,5 @@
-﻿import type { ActionFunctionArgs, LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData, useFetcher, useSearchParams } from "@remix-run/react";
+﻿import type { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
+import { useLoaderData, useSearchParams } from "@remix-run/react";
 import {
   Page,
   Text,
@@ -11,12 +11,11 @@ import {
   ProgressBar,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import { PLANS, formatPrice, type PlanSlug } from "../config/plans";
 import {
   activateConfirmedPlan,
-  createSubscription,
+  managedPricingUrl,
   syncSubscription,
 } from "../services/shopify/billing.server";
 import { ensureShop } from "../services/shopify/shops.server";
@@ -36,10 +35,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const shop = await ensureShop(session.shop, session.accessToken);
 
   const url = new URL(request.url);
-  const confirmed = url.searchParams.get("confirmed");
-  // Managed App Pricing / charge return may only include charge_id — sync live sub.
-  if (confirmed && confirmed in PLANS) {
-    await activateConfirmedPlan(shop.id, confirmed as PlanSlug);
+  // App Pricing returns plan_handle; older Billing API used confirmed=
+  const planHandle =
+    url.searchParams.get("plan_handle") ||
+    url.searchParams.get("confirmed");
+  if (planHandle && planHandle in PLANS) {
+    await activateConfirmedPlan(shop.id, planHandle as PlanSlug);
   }
 
   const plan = await syncSubscription(admin, shop.id);
@@ -58,40 +59,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         : scanCadence === "daily"
           ? "today"
           : "lifetime";
+
   return {
     plan,
     shopDomain: session.shop,
     usage,
     limits: { productLimit, aiLimit, scanLimit },
     manualWindow,
-    billingTest: process.env.NODE_ENV !== "production",
-  };
-};
-
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session, admin } = await authenticate.admin(request);
-  const shop = await ensureShop(session.shop, session.accessToken);
-
-  const plan = String((await request.formData()).get("plan") ?? "");
-  if (!(plan in PLANS)) return { ok: false as const, error: "invalid_plan" };
-
-  const appUrl =
-    new URL(request.url).origin ||
-    process.env.SHOPIFY_APP_URL ||
-    "https://corepilotai.corewital.com";
-
-  const result = await createSubscription(
-    admin,
-    shop.id,
-    plan as PlanSlug,
-    appUrl,
-  );
-
-  if (!result.ok) return { ok: false as const, error: result.error };
-  return {
-    ok: true as const,
-    plan: result.plan,
-    confirmationUrl: result.confirmationUrl,
+    pricingUrl: managedPricingUrl(session.shop),
   };
 };
 
@@ -101,25 +76,14 @@ function usagePct(used: number, limit: number | null) {
 }
 
 export default function SettingsBillingPage() {
-  const { plan: currentPlan, shopDomain, usage, limits, billingTest, manualWindow } =
+  const { plan: currentPlan, shopDomain, usage, limits, manualWindow, pricingUrl } =
     useLoaderData<typeof loader>();
-  const fetcher = useFetcher<typeof action>();
   const [params] = useSearchParams();
-  const confirmed = params.get("confirmed");
+  const confirmed =
+    params.get("plan_handle") || params.get("confirmed");
   const need = params.get("need");
   const activePlan = (currentPlan in PLANS ? currentPlan : "free") as PlanSlug;
   const curPrice = Math.max(PLANS[activePlan].priceCents, 0);
-
-  useEffect(() => {
-    const url =
-      fetcher.data && "confirmationUrl" in fetcher.data
-        ? fetcher.data.confirmationUrl
-        : null;
-    if (fetcher.data?.ok && url) {
-      window.open(url, "_top");
-    }
-  }, [fetcher.data]);
-
   const slugs = Object.keys(PLANS) as PlanSlug[];
 
   return (
@@ -129,43 +93,26 @@ export default function SettingsBillingPage() {
       <BlockStack gap="500">
         {need && (
           <Banner tone="warning">
-            “{need}” needs a higher plan. Upgrade below to unlock it.
+            “{need}” needs a higher plan. Choose a plan on Shopify below to unlock
+            it.
           </Banner>
         )}
         {confirmed && (
           <Banner tone="success">
             Subscription confirmed. You are on the{" "}
-            {PLANS[activePlan]?.name ?? confirmed} plan.
+            {PLANS[(confirmed in PLANS ? confirmed : activePlan) as PlanSlug]
+              ?.name ?? confirmed}{" "}
+            plan.
           </Banner>
         )}
-        {fetcher.data && !fetcher.data.ok && (
-          <Banner tone="critical">
-            <p>
-              <strong>Upgrade failed</strong>
-            </p>
-            <p>{(fetcher.data as { error?: string }).error}</p>
-            <p>
-              Quick fix: Partners → CorePilot AI → Distribution → Public
-              distribution. Then retry Upgrade. For demos, use Admin → Installs →
-              Plan override.
-            </p>
-          </Banner>
-        )}
-        {fetcher.data?.ok && fetcher.data.confirmationUrl && (
-          <Banner tone="info">
-            Opening Shopify to approve the charge… If nothing opens,{" "}
-            <a href={fetcher.data.confirmationUrl} target="_top" rel="noreferrer">
-              click here to approve
-            </a>
-            .
-          </Banner>
-        )}
-        {billingTest && (
-          <Banner tone="info">
-            Dev mode: upgrades create a <strong>test</strong> charge (no real
-            money).
-          </Banner>
-        )}
+
+        <Banner tone="info">
+          Plan changes are handled by Shopify App Pricing. Click{" "}
+          <strong>Change plan on Shopify</strong> (or any Upgrade / Switch
+          button) to open Shopify’s plan page — approve the charge there. No
+          support ticket or reinstall needed. Charges appear under Settings →
+          Bills in Shopify admin.
+        </Banner>
 
         <div className="cp-billing-hero">
           <div className="cp-billing-hero__glow" aria-hidden />
@@ -182,12 +129,11 @@ export default function SettingsBillingPage() {
             <Text as="p" variant="headingLg">
               {formatPrice(PLANS[activePlan].priceCents)}
             </Text>
-            <Text as="p" variant="bodySm" tone="subdued">
-              Upgrade or downgrade any plan (including Enterprise) below. Shopify
-              opens a charge approval screen — no support contact or reinstall
-              required. Approved charges appear under Settings → Bills in your
-              Shopify admin.
-            </Text>
+            <div style={{ marginTop: 12 }}>
+              <Button url={pricingUrl} target="_top" variant="primary">
+                Change plan on Shopify
+              </Button>
+            </div>
             <div className="cp-billing-usage">
               <div>
                 <InlineStack align="space-between">
@@ -264,17 +210,14 @@ export default function SettingsBillingPage() {
                       Current plan
                     </Button>
                   ) : (
-                    <fetcher.Form method="post">
-                      <input type="hidden" name="plan" value={slug} />
-                      <Button
-                        submit
-                        fullWidth
-                        variant={isUpgrade ? "primary" : "secondary"}
-                        loading={fetcher.state !== "idle"}
-                      >
-                        {isUpgrade ? "Upgrade" : "Switch"} to {p.name}
-                      </Button>
-                    </fetcher.Form>
+                    <Button
+                      url={pricingUrl}
+                      target="_top"
+                      fullWidth
+                      variant={isUpgrade ? "primary" : "secondary"}
+                    >
+                      {isUpgrade ? "Upgrade" : "Switch"} to {p.name}
+                    </Button>
                   )}
                 </div>
               </div>

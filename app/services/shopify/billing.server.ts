@@ -6,8 +6,6 @@ import { PLAN_RANK, PLANS, type PlanSlug } from "../../config/plans";
 
 export { PLANS, formatPrice, type PlanSlug } from "../../config/plans";
 
-const TRIAL_DAYS = 7;
-
 /** Subscription display name — must include [slug] for reliable sync. */
 export function subscriptionNameFor(plan: PlanSlug) {
   const def = PLANS[plan];
@@ -15,7 +13,9 @@ export function subscriptionNameFor(plan: PlanSlug) {
 }
 
 export function planFromSubscriptionName(name: string): PlanSlug | null {
-  const lower = name.toLowerCase();
+  const lower = name.toLowerCase().trim();
+  // Exact handle match first (Shopify App Pricing plan_handle)
+  if (lower in PLANS) return lower as PlanSlug;
   const bracket = lower.match(/\[([a-z_]+)\]/);
   if (bracket && bracket[1] in PLANS) return bracket[1] as PlanSlug;
   return (
@@ -89,214 +89,54 @@ export type SubscribeResult =
   | { ok: true; confirmationUrl: string | null; plan: PlanSlug }
   | { ok: false; error: string };
 
-function formatBillingError(error: unknown): string {
-  if (error instanceof Error) return error.message || "Billing request failed";
-  if (typeof error === "string") return error;
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return "Billing request failed";
-  }
+/** App handle in Partner Dashboard / shopify.app.toml (used in Managed Pricing URLs). */
+export function getShopifyAppHandle() {
+  return (
+    process.env.SHOPIFY_APP_HANDLE ||
+    process.env.SHOPIFY_APP_HANDLE_NAME ||
+    "corepilot-ai"
+  ).trim();
 }
 
-function shouldUseTestCharge(appUrl: string, forceTest?: boolean): boolean {
-  if (forceTest != null) return forceTest;
-  if (process.env.BILLING_TEST === "true") return true;
-  if (process.env.BILLING_TEST === "false") return false;
-  // Dev tunnels / local always use test charges (no real money)
-  try {
-    const host = new URL(appUrl).hostname;
-    if (
-      host.includes("localhost") ||
-      host.includes("trycloudflare.com") ||
-      host.includes("ngrok") ||
-      host.endsWith(".vercel.app")
-    ) {
-      return true;
-    }
-  } catch {
-    /* ignore */
-  }
-  return process.env.NODE_ENV !== "production";
-}
-
-async function isPartnerDevelopmentStore(admin: AdminApiContext): Promise<boolean> {
-  try {
-    const res = await admin.graphql(`#graphql
-      query {
-        shop {
-          plan { partnerDevelopment displayName }
-        }
-      }`);
-    const json = await res.json();
-    const plan = json.data?.shop?.plan;
-    if (plan?.partnerDevelopment) return true;
-    const name = String(plan?.displayName ?? "").toLowerCase();
-    return name.includes("development") || name.includes("partner");
-  } catch {
-    return false;
-  }
+/** Shopify-hosted plan picker (App Pricing / Managed Pricing). */
+export function managedPricingUrl(shopDomain: string) {
+  const storeHandle = shopDomain
+    .replace(/\.myshopify\.com$/i, "")
+    .replace(/^https?:\/\//i, "")
+    .split("/")[0];
+  const appHandle = getShopifyAppHandle();
+  return `https://admin.shopify.com/store/${storeHandle}/charges/${appHandle}/pricing_plans`;
 }
 
 /**
- * Creates a Shopify AppSubscription via GraphQL (API billing).
- * Requires Partner Dashboard → Distribution → Public (even before App Store listing).
- * Merchant must approve the confirmationUrl (opens outside the embedded iframe).
+ * Start a plan change via Shopify App Pricing (Managed Pricing).
+ * Billing API `appSubscriptionCreate` is blocked in this mode — open Shopify's
+ * hosted plan page instead.
+ *
+ * @see https://shopify.dev/docs/apps/launch/billing/shopify-app-pricing
  */
 export async function createSubscription(
-  admin: AdminApiContext,
+  _admin: AdminApiContext,
   shopId: number,
   plan: PlanSlug,
-  appUrl: string,
-  isTest?: boolean,
+  _appUrl: string,
+  _isTest?: boolean,
+  shopDomain?: string,
 ): Promise<SubscribeResult> {
-  const definition = PLANS[plan];
+  const shop =
+    shopDomain ||
+    (await db.query.shops.findFirst({ where: eq(shops.id, shopId) }))
+      ?.shopDomain;
 
-  if (definition.priceCents === 0) {
-    await cancelSubscription(admin, shopId);
-    await upsertSubscription({
-      shopId,
-      plan: "free",
-      status: "active",
-      planSource: "shopify",
-    });
-    return { ok: true, confirmationUrl: null, plan };
+  if (!shop) {
+    return { ok: false, error: "Shop not found for billing redirect." };
   }
 
-  // Return path after Shopify charge approval (also set Partner plan Redirect URL
-  // to /app/settings/billing for Managed App Pricing).
-  const returnUrl = `${appUrl.replace(/\/$/, "")}/app/settings/billing?confirmed=${plan}`;
-  if (!/^https:\/\//i.test(returnUrl)) {
-    return {
-      ok: false,
-      error: `Billing return URL must be HTTPS. Got: ${returnUrl}`,
-    };
-  }
-
-  const partnerDev = await isPartnerDevelopmentStore(admin);
-  const test = shouldUseTestCharge(appUrl, isTest) || partnerDev;
-  const trialDays = plan === "enterprise" ? 0 : TRIAL_DAYS;
-
-  try {
-    const res = await admin.graphql(
-      `#graphql
-      mutation CreateSubscription(
-        $name: String!
-        $returnUrl: URL!
-        $trialDays: Int
-        $test: Boolean
-        $lineItems: [AppSubscriptionLineItemInput!]!
-        $replacementBehavior: AppSubscriptionReplacementBehavior
-      ) {
-        appSubscriptionCreate(
-          name: $name
-          returnUrl: $returnUrl
-          trialDays: $trialDays
-          test: $test
-          lineItems: $lineItems
-          replacementBehavior: $replacementBehavior
-        ) {
-          confirmationUrl
-          appSubscription { id status }
-          userErrors { field message }
-        }
-      }`,
-      {
-        variables: {
-          name: subscriptionNameFor(plan),
-          returnUrl,
-          trialDays,
-          test,
-          // Immediate replace so upgrade/downgrade shows on Application charge history
-          replacementBehavior: "APPLY_IMMEDIATELY",
-          lineItems: [
-            {
-              plan: {
-                appRecurringPricingDetails: {
-                  price: {
-                    amount: (definition.priceCents / 100).toFixed(2),
-                    currencyCode: "USD",
-                  },
-                  interval: "EVERY_30_DAYS",
-                },
-              },
-            },
-          ],
-        },
-      },
-    );
-
-    const json = (await res.json()) as {
-      data?: {
-        appSubscriptionCreate?: {
-          confirmationUrl?: string | null;
-          appSubscription?: { id?: string; status?: string } | null;
-          userErrors?: { field?: string[]; message: string }[];
-        };
-      };
-      errors?: { message: string }[];
-    };
-
-    if (json.errors?.length) {
-      const msg = json.errors.map((e) => e.message).join("; ");
-      return { ok: false, error: humanizeBillingApiError(msg) };
-    }
-
-    const result = json.data?.appSubscriptionCreate;
-    const errors = result?.userErrors ?? [];
-    if (errors.length) {
-      return {
-        ok: false,
-        error: humanizeBillingApiError(errors.map((e) => e.message).join("; ")),
-      };
-    }
-
-    if (!result?.confirmationUrl) {
-      return {
-        ok: false,
-        error:
-          "Shopify did not return a confirmation URL. Set Partner Dashboard → Distribution → Public, and use test charges on a development store.",
-      };
-    }
-
-    await upsertSubscription({
-      shopId,
-      plan,
-      status: "pending",
-      shopifySubscriptionId: result.appSubscription?.id ?? null,
-      planSource: "shopify",
-    });
-
-    return { ok: true, confirmationUrl: result.confirmationUrl, plan };
-  } catch (error) {
-    console.error("[billing] appSubscriptionCreate failed", error);
-    return {
-      ok: false,
-      error: humanizeBillingApiError(formatBillingError(error)),
-    };
-  }
-}
-
-function humanizeBillingApiError(msg: string): string {
-  const m = msg.toLowerCase();
-  if (
-    m.includes("public distribution") ||
-    m.includes("without a public") ||
-    m.includes("billing api")
-  ) {
-    return (
-      "Shopify Billing API blocked: open Partners → your app → Distribution → " +
-      "choose Public distribution (you do not need to publish to the App Store yet). " +
-      "Original: " +
-      msg
-    );
-  }
-  if (m.includes("test") && m.includes("development")) {
-    return (
-      "Use a development store and test charges. Original: " + msg
-    );
-  }
-  return msg || "Could not create Shopify subscription. Try again.";
+  return {
+    ok: true,
+    confirmationUrl: managedPricingUrl(shop),
+    plan,
+  };
 }
 
 /** After merchant approves charge, activate plan locally (also covered by webhook). */

@@ -6,6 +6,7 @@ name = "CorePilot AI"
 client_id = "a4ba88c8d3f3c2c642fb0791258c1142"
 application_url = "https://corepilotai.corewital.com"
 embedded = true
+handle = "corepilot-ai"
 
 [build]
 automatically_update_urls_on_dev = true

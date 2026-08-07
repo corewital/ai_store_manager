@@ -20,12 +20,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const chargeId =
     url.searchParams.get("charge_id") ||
     url.searchParams.get("chargeId");
+  const planHandle = url.searchParams.get("plan_handle");
 
   // Partner App Pricing Redirect URL is often "/" — send merchants into the app
   // (billing page when returning from a charge) so upgrade/downgrade completes.
   if (shop) {
     const qs = url.searchParams.toString();
-    if (chargeId) {
+    if (chargeId || planHandle) {
       throw redirect(`/app/settings/billing?${qs}`);
     }
     throw redirect(`/app?${qs}`);
