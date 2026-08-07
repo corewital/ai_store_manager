@@ -163,13 +163,8 @@ export async function createSubscription(
     return { ok: true, confirmationUrl: null, plan };
   }
 
-  if (definition.priceCents < 0) {
-    return {
-      ok: false,
-      error: "Enterprise plans require contacting support.",
-    };
-  }
-
+  // Return path after Shopify charge approval (also set Partner plan Redirect URL
+  // to /app/settings/billing for Managed App Pricing).
   const returnUrl = `${appUrl.replace(/\/$/, "")}/app/settings/billing?confirmed=${plan}`;
   if (!/^https:\/\//i.test(returnUrl)) {
     return {
@@ -180,6 +175,7 @@ export async function createSubscription(
 
   const partnerDev = await isPartnerDevelopmentStore(admin);
   const test = shouldUseTestCharge(appUrl, isTest) || partnerDev;
+  const trialDays = plan === "enterprise" ? 0 : TRIAL_DAYS;
 
   try {
     const res = await admin.graphql(
@@ -190,6 +186,7 @@ export async function createSubscription(
         $trialDays: Int
         $test: Boolean
         $lineItems: [AppSubscriptionLineItemInput!]!
+        $replacementBehavior: AppSubscriptionReplacementBehavior
       ) {
         appSubscriptionCreate(
           name: $name
@@ -197,6 +194,7 @@ export async function createSubscription(
           trialDays: $trialDays
           test: $test
           lineItems: $lineItems
+          replacementBehavior: $replacementBehavior
         ) {
           confirmationUrl
           appSubscription { id status }
@@ -207,14 +205,15 @@ export async function createSubscription(
         variables: {
           name: subscriptionNameFor(plan),
           returnUrl,
-          trialDays: TRIAL_DAYS,
+          trialDays,
           test,
+          // Immediate replace so upgrade/downgrade shows on Application charge history
+          replacementBehavior: "APPLY_IMMEDIATELY",
           lineItems: [
             {
               plan: {
                 appRecurringPricingDetails: {
                   price: {
-                    // Shopify Decimal — string is the safest wire format
                     amount: (definition.priceCents / 100).toFixed(2),
                     currencyCode: "USD",
                   },

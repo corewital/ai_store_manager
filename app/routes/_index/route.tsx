@@ -16,9 +16,19 @@ export const meta: MetaFunction = () => [
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
+  const shop = url.searchParams.get("shop");
+  const chargeId =
+    url.searchParams.get("charge_id") ||
+    url.searchParams.get("chargeId");
 
-  if (url.searchParams.get("shop")) {
-    throw redirect(`/app?${url.searchParams.toString()}`);
+  // Partner App Pricing Redirect URL is often "/" — send merchants into the app
+  // (billing page when returning from a charge) so upgrade/downgrade completes.
+  if (shop) {
+    const qs = url.searchParams.toString();
+    if (chargeId) {
+      throw redirect(`/app/settings/billing?${qs}`);
+    }
+    throw redirect(`/app?${qs}`);
   }
 
   return { showForm: Boolean(login) };

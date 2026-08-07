@@ -166,14 +166,14 @@ const PLAN_DEFS = [
   {
     slug: "enterprise",
     name: "Enterprise",
-    priceCents: -1,
+    priceCents: 9999,
     trialDays: 0,
     shopifyPlanHandle: "enterprise",
     features: [
       { featureKey: "products_limit", limitValue: null as number | null, enabled: true },
       { featureKey: "collections_limit", limitValue: null as number | null, enabled: true },
-      { featureKey: "ai_fixes_limit", limitValue: null as number | null, enabled: true },
-      { featureKey: "manual_scans_limit", limitValue: null as number | null, enabled: true },
+      { featureKey: "ai_fixes_limit", limitValue: 10000, enabled: true },
+      { featureKey: "manual_scans_limit", limitValue: 5, enabled: true },
       { featureKey: "scan_cadence", limitValue: 3, enabled: true },
       { featureKey: "module_products", limitValue: null, enabled: true },
       { featureKey: "module_seo", limitValue: null, enabled: true },

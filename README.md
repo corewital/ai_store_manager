@@ -1,50 +1,58 @@
 # CorePilot AI (AI Store Manager)
 
-Shopify embedded app (Remix + Polaris) · **live Turso** · Vercel.
+Shopify embedded app that scans catalog health (products, SEO, images, inventory, collections, nav, theme), AI-fixes issues, billing plans, in-app assistant, and a separate **Admin Core**.
 
-## Live (production)
+**Stack:** Remix · `@shopify/shopify-app-remix` · Polaris · App Bridge · Drizzle + Turso · Vercel Cron · Resend · multi-provider text AI · `sharp` (pixels only)
 
-| Item | Value |
-|------|--------|
+## Live
+
+| | |
+|--|--|
 | App | https://corepilotai.corewital.com |
 | Admin | https://corepilotai.corewital.com/admin |
-| **Master DB** | `libsql://corepilot-ai-db-vercel-icfg-iurxedhaq7upmnrfjl1nqjpw.aws-us-east-1.turso.io` |
-| Turso console | [corepilot-ai-db](https://app.turso.tech/vercel-icfg-iurxedhaq7upmnrfjl1nqjpw/databases/corepilot-ai-db) |
+| DB | Turso master `corepilot-ai-db` (see `app/db/master-db.ts`) |
+| Deploy | [`docs/DEPLOY.md`](./docs/DEPLOY.md) · listing [`docs/SHOPIFY_PUBLIC_LISTING.md`](./docs/SHOPIFY_PUBLIC_LISTING.md) |
 
-**Rules**
+**Prod rules:** Vercel always uses master Turso (never `file:` / branch DB). Schema = `npm run db:push-live` (ALTER only). Never `db:fresh` on live. Local = `file:./data/local.db`.
 
-- Production backend **always** uses master `corepilot-ai-db` (`app/db/master-db.ts`) — Vercel cannot switch to a branch DB.
-- Set `TURSO_AUTH_TOKEN` on Vercel for that master DB.
-- Schema: `npm run db:push-live` (ALTER only). Never `db:fresh` on live.
-- Local dev: `file:./data/local.db` in `.env` (separate from live).
+## Paths
 
-See [`docs/DEPLOY.md`](./docs/DEPLOY.md) for full Vercel + Shopify deploy steps.
+| Area | Path |
+|------|------|
+| Merchant | `app/routes/app.*` |
+| Admin | `app/routes/admin.*` + `AdminLayout` |
+| Services | `app/services/**/*.server.ts` |
+| Schema | `app/db/schema.ts` |
+| Prod TOML | `shopify.app.toml` → `npm run deploy` |
+| Dev TOML | `shopify.app.dev.toml` → `npm run dev` |
 
-## Local install
+Admin = **cookie session** (not Shopify). Soft-delete via `deletedAt`. Business config → `systemSettings` / `appSettings` / `planFeatures` (not hardcoded).
 
-1. `cp .env.example .env` — fill Shopify keys; keep `TURSO_DATABASE_URL=file:./data/local.db` for local.
-2. `npm install`
-3. `npm run db:migrate` → `npm run db:seed` (local file DB only)
-4. `npm run dev` — embedded app (`shopify.app.dev.toml`)
-5. Admin: `npm run vite` → http://127.0.0.1:3000/admin/login
+**Compliance webhooks** (App Store required): one subscription, all three topics → `/webhooks/compliance`  
+`customers/data_request` · `customers/redact` · `shop/redact`
 
-## Useful scripts
+## Local
+
+```bash
+cp .env.example .env   # Shopify keys; TURSO_DATABASE_URL=file:./data/local.db
+npm install
+npm run db:migrate && npm run db:seed
+npm run dev            # embedded app
+npm run vite           # admin → http://127.0.0.1:3000/admin/login
+```
 
 | Script | Purpose |
 |--------|---------|
-| `npm run db:push-live` | Push schema to **live** corepilot-ai-db (ALTER only) |
-| `npm run db:repair` | Repair local file DB columns |
-| `npx tsx scripts/migrate-expiring-tokens-live.ts` | Live session columns + clear stale tokens |
-| `npx tsx scripts/update-live-products-limit.ts` | Example: patch live `plan_features` |
+| `npm run db:push-live` | ALTER schema on live Turso |
+| `npm run db:repair` | Repair local columns |
+| `npm run deploy` | Release Shopify app config / version |
 
-## Cron (Vercel Hobby)
+**Cron** (`Authorization: Bearer $CRON_SECRET`): daily-scan `0 3 * * *` · process-jobs `15 3 * * *` · weekly-report `0 4 * * 0`
 
-- `/api/cron/daily-scan` — `0 3 * * *`
-- `/api/cron/process-jobs` — `15 3 * * *`
-- `/api/cron/weekly-report` — `0 4 * * 0`
+## Agent protocol
 
-Header: `Authorization: Bearer $CRON_SECRET`
+[`START.md`](./START.md) · `CURRENT.md` · `PROGRESS.md` · locked choices [`docs/DECISIONS.md`](./docs/DECISIONS.md)
 
-## Session protocol
+## Sibling app blueprint
 
-[`START.md`](./START.md) · `CURRENT.md` / `PROGRESS.md`
+New Year/Make/Model app (same shell, different domain): [`docs/COREYMM.md`](./docs/COREYMM.md)

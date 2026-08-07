@@ -12,6 +12,19 @@ import { logWebhook } from "../services/shopify/webhook-log.server";
  *
  * authenticate.webhook verifies HMAC — invalid HMAC → 401 (required by Shopify).
  */
+
+/** Browser / health probes use GET — do not 500 (action-only routes throw). */
+export const loader = async () =>
+  new Response(
+    JSON.stringify({
+      ok: true,
+      endpoint: "compliance",
+      methods: ["POST"],
+      topics: ["customers/data_request", "customers/redact", "shop/redact"],
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, topic, payload } = await authenticate.webhook(request);
   const normalized = String(topic || "")
@@ -30,7 +43,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         .where(eq(shops.shopDomain, shop));
     }
     // customers/data_request + customers/redact: app stores little/no customer PII.
-    // Acknowledge with 200; payload is logged for audit.
     await logWebhook({ shopDomain: shop, topic, payload, status: "ok" });
   } catch (error) {
     await logWebhook({
@@ -40,8 +52,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       status: "error",
       errorMessage: error instanceof Error ? error.message : String(error),
     });
-    // Still return 200 after logging so Shopify doesn't keep retrying forever
-    // for transient DB issues on data_request/redact (shop/redact should retry).
     if (normalized === "SHOP_REDACT") throw error;
   }
 

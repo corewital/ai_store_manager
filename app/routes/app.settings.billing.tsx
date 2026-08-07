@@ -37,7 +37,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const url = new URL(request.url);
   const confirmed = url.searchParams.get("confirmed");
-  if (confirmed && confirmed in PLANS && confirmed !== "enterprise") {
+  // Managed App Pricing / charge return may only include charge_id — sync live sub.
+  if (confirmed && confirmed in PLANS) {
     await activateConfirmedPlan(shop.id, confirmed as PlanSlug);
   }
 
@@ -73,9 +74,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const plan = String((await request.formData()).get("plan") ?? "");
   if (!(plan in PLANS)) return { ok: false as const, error: "invalid_plan" };
-  if (plan === "enterprise") {
-    return { ok: false as const, error: "Contact support for Enterprise." };
-  }
 
   const appUrl =
     new URL(request.url).origin ||
@@ -184,6 +182,12 @@ export default function SettingsBillingPage() {
             <Text as="p" variant="headingLg">
               {formatPrice(PLANS[activePlan].priceCents)}
             </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Upgrade or downgrade any plan (including Enterprise) below. Shopify
+              opens a charge approval screen — no support contact or reinstall
+              required. Approved charges appear under Settings → Bills in your
+              Shopify admin.
+            </Text>
             <div className="cp-billing-usage">
               <div>
                 <InlineStack align="space-between">
@@ -228,15 +232,14 @@ export default function SettingsBillingPage() {
           {slugs.map((slug) => {
             const p = PLANS[slug];
             const isCurrent = slug === activePlan;
-            const isEnterprise = p.priceCents < 0;
-            const isUpgrade = !isEnterprise && p.priceCents > curPrice;
+            const isUpgrade = p.priceCents > curPrice;
             const featured = slug === "business" || slug === "enterprise";
             return (
               <div
                 key={slug}
                 className={`cp-plan-card${isCurrent ? " is-current" : ""}${
                   featured ? " is-featured" : ""
-                }${isEnterprise ? " is-enterprise" : ""}`}
+                }`}
               >
                 <div className="cp-plan-card__face">
                   <InlineStack align="space-between" blockAlign="start">
@@ -246,7 +249,7 @@ export default function SettingsBillingPage() {
                     {isCurrent && <Badge tone="success">Current</Badge>}
                     {featured && !isCurrent && (
                       <Badge tone="info">
-                        {isEnterprise ? "Custom" : "Popular"}
+                        {slug === "enterprise" ? "Best value" : "Popular"}
                       </Badge>
                     )}
                   </InlineStack>
@@ -259,10 +262,6 @@ export default function SettingsBillingPage() {
                   {isCurrent ? (
                     <Button disabled fullWidth>
                       Current plan
-                    </Button>
-                  ) : isEnterprise ? (
-                    <Button url="/app/support" fullWidth variant="primary">
-                      Contact for Enterprise
                     </Button>
                   ) : (
                     <fetcher.Form method="post">

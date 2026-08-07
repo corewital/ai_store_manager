@@ -93,18 +93,20 @@ export const PLANS = {
   },
   enterprise: {
     name: "Enterprise",
-    priceCents: -1,
+    priceCents: 9999,
     productLimit: null,
     collectionLimit: null,
-    aiFixLimit: null,
-    manualScanLimit: null,
+    aiFixLimit: 10000,
+    manualScanLimit: 5,
     scanCadence: "daily" as const,
     features: [
-      "Unlimited products & collections",
-      "Unlimited AI & manual fixes",
-      "Auto daily scan + unlimited manual",
-      "Priority support",
-      "Custom limits — contact support",
+      "Unlimited products scanned",
+      "Unlimited collections scanned",
+      "10,000 AI fix credits & manual fixes",
+      "Auto daily scan (1× / day)",
+      "Manual scans (5 / day)",
+      "AI assistant",
+      "Priority processing",
     ],
     modules: ["*"] as const,
   },
@@ -140,7 +142,6 @@ export const PLAN_FEATURE_KEYS = [
 ] as const;
 
 export function formatPrice(cents: number) {
-  if (cents < 0) return "Contact us";
-  if (cents === 0) return "Free";
+  if (cents <= 0) return "Free";
   return `$${(cents / 100).toFixed(2)}/mo`;
 }
