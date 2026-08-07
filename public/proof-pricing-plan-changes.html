@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CorePilot AI — Pricing plan changes (proof)</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 42rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+        color: #202223;
+      }
+      h1 { font-size: 1.35rem; }
+      .ok { color: #0b7a3b; font-weight: 600; }
+      code { background: #f6f6f7; padding: 0.1em 0.35em; border-radius: 4px; }
+      ol { padding-left: 1.2rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Proof of resolution — Allow pricing plan changes (1.2.3)</h1>
+    <p class="ok">
+      Resolved: merchants can upgrade/downgrade any plan (including Enterprise)
+      without contacting support or reinstalling.
+    </p>
+    <p>
+      CorePilot AI uses <strong>Shopify App Pricing</strong>. In-app
+      Settings → Billing opens Shopify’s hosted plan page (no Billing API
+      charges; Managed Pricing).
+    </p>
+    <p><strong>Demo path for reviewers:</strong></p>
+    <ol>
+      <li>Install CorePilot AI on a development store</li>
+      <li>Open app → Settings → Billing</li>
+      <li>Click <strong>Change plan on Shopify</strong> or Upgrade / Switch on any card (including Enterprise)</li>
+      <li>
+        Land on
+        <code>admin.shopify.com/store/…/charges/corepilot-ai/pricing_plans</code>
+      </li>
+      <li>Select Free, Starter, Professional, Business, or Enterprise → approve</li>
+      <li>Return to app; plan updates. Charge appears under Shopify Settings → Bills</li>
+    </ol>
+    <p>
+      Enterprise is a normal public plan ($99.99/mo, handle <code>enterprise</code>) —
+      not “contact support.”
+    </p>
+  </body>
+</html>
