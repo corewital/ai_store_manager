@@ -1,16 +1,45 @@
-import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
+import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
-import { Form, Link, useLoaderData } from "@remix-run/react";
+import { useLoaderData } from "@remix-run/react";
+import { useEffect } from "react";
 
 import { login } from "../../shopify.server";
-import styles from "./styles.module.css";
+import bodyHtml from "./landing-body.html?raw";
+
+const SITE = "https://corepilotai.corewital.com";
+const OG_IMAGE = `${SITE}/images/App_Store_Banner.png`;
 
 export const meta: MetaFunction = () => [
-  { title: "CorePilot AI — Shopify Store Health & Optimization" },
+  { title: "CorePilot AI — Store Health, Catalog Fixes & AI Assistant" },
   {
     name: "description",
     content:
-      "CorePilot AI scans your Shopify store for product, SEO, image, inventory, and collection issues, then fixes them automatically with AI.",
+      "Shopify embedded app: Health Score, product & SEO scans, one-click AI fixes, image optimization, and store-aware AI Assistant on Business+.",
+  },
+  { name: "keywords", content: "Shopify SEO app, store health score, AI assistant, catalog fix" },
+  { tagName: "link", rel: "canonical", href: SITE },
+  { property: "og:type", content: "website" },
+  { property: "og:url", content: SITE },
+  { property: "og:title", content: "CorePilot AI — Shopify Store Health & AI Assistant" },
+  {
+    property: "og:description",
+    content:
+      "Scan your catalog, fix SEO and images with AI, and chat with a store-aware assistant.",
+  },
+  { property: "og:image", content: OG_IMAGE },
+  { name: "twitter:card", content: "summary_large_image" },
+  { name: "twitter:image", content: OG_IMAGE },
+];
+
+export const links: LinksFunction = () => [
+  { rel: "stylesheet", href: "/landing/landing.css" },
+  {
+    rel: "stylesheet",
+    href: "https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap",
+  },
+  {
+    rel: "stylesheet",
+    href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
   },
 ];
 
@@ -18,12 +47,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const shop = url.searchParams.get("shop");
   const chargeId =
-    url.searchParams.get("charge_id") ||
-    url.searchParams.get("chargeId");
+    url.searchParams.get("charge_id") || url.searchParams.get("chargeId");
   const planHandle = url.searchParams.get("plan_handle");
 
-  // Partner App Pricing Redirect URL is often "/" — send merchants into the app
-  // (billing page when returning from a charge) so upgrade/downgrade completes.
   if (shop) {
     const qs = url.searchParams.toString();
     if (chargeId || planHandle) {
@@ -32,171 +58,110 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     throw redirect(`/app?${qs}`);
   }
 
-  return { showForm: Boolean(login) };
+  return { showLogin: Boolean(login) };
 };
 
-const FEATURES = [
-  {
-    icon: "/images/Dashboard.png",
-    title: "Store health score",
-    text: "One dashboard grading products, SEO, images, inventory, and collections.",
-  },
-  {
-    icon: "/images/AI_Assistant.png",
-    title: "AI one-click fixes",
-    text: "Generate descriptions, SEO, and alt text — apply single fixes instantly or in bulk.",
-  },
-  {
-    icon: "/images/Reports.png",
-    title: "Automatic scans",
-    text: "Background cron scans your catalog daily and queues fixes without slowing your store.",
-  },
-  {
-    icon: "/images/Images.png",
-    title: "Image optimization",
-    text: "Compress oversized images and add missing media to speed up page loads.",
-  },
-  {
-    icon: "/images/Settings.png",
-    title: "Multi-AI providers",
-    text: "OpenAI, Gemini, Claude, OpenRouter and more with automatic key rotation and failover.",
-  },
-  {
-    icon: "/images/Performance.png",
-    title: "Reports & alerts",
-    text: "Scheduled email summaries so you always know what changed and what needs attention.",
-  },
-];
+const JSON_LD = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      name: "CorePilot AI",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Shopify Admin, Web",
+      offers: [
+        { "@type": "Offer", name: "Free", price: "0", priceCurrency: "USD" },
+        {
+          "@type": "Offer",
+          name: "Starter",
+          price: "4.99",
+          priceCurrency: "USD",
+        },
+        {
+          "@type": "Offer",
+          name: "Professional",
+          price: "9.99",
+          priceCurrency: "USD",
+        },
+        {
+          "@type": "Offer",
+          name: "Business",
+          price: "19.99",
+          priceCurrency: "USD",
+        },
+        {
+          "@type": "Offer",
+          name: "Enterprise",
+          price: "99.99",
+          priceCurrency: "USD",
+        },
+      ],
+      description:
+        "Shopify app for catalog health scans, SEO and image fixes, and AI Assistant on Business plans.",
+      url: SITE,
+    },
+    {
+      "@type": "Organization",
+      name: "CorePilot AI",
+      url: SITE,
+      logo: `${SITE}/images/Main_Brand_Logo_Horizontal.png`,
+    },
+  ],
+};
 
-const STEPS = [
-  { n: "1", title: "Install", text: "Add CorePilot AI to your Shopify store in a click." },
-  { n: "2", title: "Scan", text: "We audit your whole catalog and score every module." },
-  { n: "3", title: "Fix & grow", text: "Approve AI fixes and watch your store health climb." },
-];
+function LandingScripts() {
+  useEffect(() => {
+    const tailwindSrc = "https://cdn.tailwindcss.com?plugins=forms,container-queries";
+    if (!document.querySelector(`script[src="${tailwindSrc}"]`)) {
+      const tw = document.createElement("script");
+      tw.src = tailwindSrc;
+      tw.onload = () => {
+        const cfg = document.createElement("script");
+        cfg.src = "/landing/tailwind-config.js";
+        document.body.appendChild(cfg);
+      };
+      document.head.appendChild(tw);
+    }
+
+    const threeSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+    if (!document.querySelector(`script[src="${threeSrc}"]`)) {
+      const three = document.createElement("script");
+      three.src = threeSrc;
+      three.onload = () => {
+        if (!document.querySelector('script[src="/landing/landing.js"]')) {
+          const app = document.createElement("script");
+          app.src = "/landing/landing.js";
+          app.defer = true;
+          document.body.appendChild(app);
+        }
+      };
+      document.body.appendChild(three);
+    }
+
+    document.documentElement.classList.add("dark", "scroll-smooth");
+    document.body.className =
+      "bg-background font-body-md text-text-primary antialiased selection:bg-primary selection:text-background min-h-screen relative overflow-x-hidden";
+
+    return () => {
+      document.documentElement.classList.remove("dark", "scroll-smooth");
+    };
+  }, []);
+
+  return null;
+}
 
 export default function Index() {
-  const { showForm } = useLoaderData<typeof loader>();
+  useLoaderData<typeof loader>();
 
   return (
-    <div className={styles.page}>
-      <header className={styles.nav}>
-        <div className={styles.brand}>
-          <img
-            src="/images/Main_Brand_Logo_Horizontal.png"
-            alt="CorePilot AI"
-            className={styles.brandLogo}
-          />
-        </div>
-        <nav className={styles.navLinks}>
-          <a href="#features">Features</a>
-          <a href="#how">How it works</a>
-          <Link to="/privacy">Privacy</Link>
-        </nav>
-      </header>
-
-      <section className={styles.hero}>
-        <div className={styles.heroCopy}>
-          <span className={styles.badge}>Shopify embedded app</span>
-          <h1 className={styles.heading}>
-            Fix your store health <span className={styles.grad}>with AI</span>
-          </h1>
-          <p className={styles.sub}>
-            CorePilot AI continuously scans your Shopify catalog for product,
-            SEO, image, inventory, and collection issues — then fixes them
-            automatically so you can focus on selling.
-          </p>
-
-          {showForm ? (
-            <Form className={styles.form} method="post" action="/auth/login">
-              <label className={styles.label}>
-                <span className={styles.labelText}>Your Shopify store</span>
-                <input
-                  className={styles.input}
-                  type="text"
-                  name="shop"
-                  placeholder="my-shop.myshopify.com"
-                  autoComplete="off"
-                />
-              </label>
-              <button className={styles.button} type="submit">
-                Install / Log in
-              </button>
-            </Form>
-          ) : (
-            <p className={styles.note}>
-              Open this app from your Shopify admin to get started.
-            </p>
-          )}
-          <p className={styles.finePrint}>
-            Free plan available · No credit card required
-          </p>
-        </div>
-
-        <div className={styles.heroCard} aria-hidden="true">
-          <img
-            src="/images/Website_Hero_Logo.png"
-            alt=""
-            className={styles.heroLogo}
-          />
-          <div className={styles.scoreRing}>
-            <span className={styles.scoreValue}>92</span>
-            <span className={styles.scoreLabel}>Store health</span>
-          </div>
-          <ul className={styles.miniBars}>
-            {[
-              ["Products", 88],
-              ["SEO", 74],
-              ["Images", 95],
-              ["Inventory", 90],
-              ["Collections", 100],
-            ].map(([label, val]) => (
-              <li key={label as string}>
-                <span>{label}</span>
-                <span className={styles.track}>
-                  <span
-                    className={styles.fill}
-                    style={{ width: `${val as number}%` }}
-                  />
-                </span>
-                <b>{val}</b>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-
-      <section id="features" className={styles.section}>
-        <h2 className={styles.sectionTitle}>Everything to keep your store healthy</h2>
-        <div className={styles.grid}>
-          {FEATURES.map((f) => (
-            <div key={f.title} className={styles.feature}>
-              <img src={f.icon} alt="" className={styles.featureIcon} />
-              <h3>{f.title}</h3>
-              <p>{f.text}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section id="how" className={styles.section}>
-        <h2 className={styles.sectionTitle}>How it works</h2>
-        <div className={styles.steps}>
-          {STEPS.map((s) => (
-            <div key={s.n} className={styles.step}>
-              <span className={styles.stepNum}>{s.n}</span>
-              <h3>{s.title}</h3>
-              <p>{s.text}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <footer className={styles.footer}>
-        <span>© {new Date().getFullYear()} CorePilot AI · CoreWital</span>
-        <span className={styles.footerLinks}>
-          <Link to="/privacy">Privacy policy</Link>
-        </span>
-      </footer>
-    </div>
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+      />
+      <LandingScripts />
+      <div dangerouslySetInnerHTML={{ __html: bodyHtml }} />
+    </>
   );
 }

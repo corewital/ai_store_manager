@@ -1,0 +1,48 @@
+﻿  <style>
+    /* WCAG Focus Ring Enhancement & Skip Links */
+    :focus-visible {
+      outline: 2px solid #34d399;
+      outline-offset: 3px;
+    }
+    .skip-to-content {
+      position: absolute;
+      top: -60px;
+      left: 1rem;
+      background: #10b981;
+      color: #040706;
+      font-weight: 700;
+      padding: 0.75rem 1.5rem;
+      z-index: 9999;
+      border-radius: 0.5rem;
+      transition: top 0.2s;
+    }
+    .skip-to-content:focus {
+      top: 1rem;
+    }
+
+    /* Grid & Matrix Glows */
+    .cyber-grid {
+      background-image:
+        radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.14) 0%, transparent 70%),
+        linear-gradient(to right, rgba(16, 185, 129, 0.035) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(16, 185, 129, 0.035) 1px, transparent 1px);
+      background-size: 100% 100%, 40px 40px, 40px 40px;
+    }
+
+    .hud-tl { border-top: 1.5px solid #10b981; border-left: 1.5px solid #10b981; }
+    .hud-tr { border-top: 1.5px solid #10b981; border-right: 1.5px solid #10b981; }
+    .hud-bl { border-bottom: 1.5px solid #10b981; border-left: 1.5px solid #10b981; }
+    .hud-br { border-bottom: 1.5px solid #10b981; border-right: 1.5px solid #10b981; }
+
+    @keyframes subtle-float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-5px); }
+    }
+    .animate-float { animation: subtle-float 5s ease-in-out infinite; }
+    .animate-float-delayed { animation: subtle-float 5s ease-in-out infinite 2.5s; }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #040706; }
+    ::-webkit-scrollbar-thumb { background: rgba(16, 185, 129, 0.3); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #10b981; }
+  </style>

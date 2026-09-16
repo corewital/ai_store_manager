@@ -9,6 +9,7 @@ Shopify embedded app that scans catalog health (products, SEO, images, inventory
 | | |
 |--|--|
 | App | https://corepilotai.corewital.com |
+| Features / AI Assistant | https://corepilotai.corewital.com/features |
 | Admin | https://corepilotai.corewital.com/admin |
 | DB | Turso master `corepilot-ai-db` (see `app/db/master-db.ts`) |
 | Deploy | [`docs/DEPLOY.md`](./docs/DEPLOY.md) · listing [`docs/SHOPIFY_PUBLIC_LISTING.md`](./docs/SHOPIFY_PUBLIC_LISTING.md) |
