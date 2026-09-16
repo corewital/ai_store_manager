@@ -109,43 +109,39 @@ const JSON_LD = {
   ],
 };
 
-function LandingScripts() {
+/** Three.js hero only — Tailwind already loads in document head (root.tsx). */
+function LandingHeroScripts() {
   useEffect(() => {
-    const tailwindSrc = "https://cdn.tailwindcss.com?plugins=forms,container-queries";
-    if (!document.querySelector(`script[src="${tailwindSrc}"]`)) {
-      const tw = document.createElement("script");
-      tw.src = tailwindSrc;
-      tw.onload = () => {
-        const cfg = document.createElement("script");
-        cfg.src = "/landing/tailwind-config.js";
-        document.body.appendChild(cfg);
-      };
-      document.head.appendChild(tw);
-    }
-
     const threeSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
-    if (!document.querySelector(`script[src="${threeSrc}"]`)) {
-      const three = document.createElement("script");
-      three.src = threeSrc;
-      three.onload = () => {
-        if (!document.querySelector('script[src="/landing/landing.js"]')) {
-          const app = document.createElement("script");
-          app.src = "/landing/landing.js";
-          app.defer = true;
-          document.body.appendChild(app);
-        }
-      };
-      document.body.appendChild(three);
+
+    const bootLandingJs = () => {
+      if (document.querySelector('script[src="/landing/landing.js"]')) return;
+      const app = document.createElement("script");
+      app.src = "/landing/landing.js";
+      app.defer = true;
+      document.body.appendChild(app);
+    };
+
+    if (typeof window !== "undefined" && (window as unknown as { THREE?: unknown }).THREE) {
+      bootLandingJs();
+      return;
     }
 
-    document.documentElement.classList.add("dark", "scroll-smooth");
-    document.body.className =
-      "bg-background font-body-md text-text-primary antialiased selection:bg-primary selection:text-background min-h-screen relative overflow-x-hidden";
-
-    return () => {
-      document.documentElement.classList.remove("dark", "scroll-smooth");
-    };
+    let three = document.querySelector(
+      `script[src="${threeSrc}"]`,
+    ) as HTMLScriptElement | null;
+    if (!three) {
+      three = document.createElement("script");
+      three.src = threeSrc;
+      three.async = true;
+      three.onload = bootLandingJs;
+      document.body.appendChild(three);
+    } else if ((window as unknown as { THREE?: unknown }).THREE) {
+      bootLandingJs();
+    } else {
+      three.addEventListener("load", bootLandingJs);
+    }
   }, []);
 
   return null;
@@ -160,7 +156,7 @@ export default function Index() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
       />
-      <LandingScripts />
+      <LandingHeroScripts />
       <div dangerouslySetInnerHTML={{ __html: bodyHtml }} />
     </>
   );

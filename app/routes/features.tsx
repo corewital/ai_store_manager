@@ -1,6 +1,5 @@
 import type { LinksFunction, MetaFunction } from "@remix-run/node";
 import { Link } from "@remix-run/react";
-import { useEffect } from "react";
 
 export const meta: MetaFunction = () => [
   { title: "Features & AI Assistant — CorePilot AI" },
@@ -25,17 +24,6 @@ export const links: LinksFunction = () => [
 ];
 
 export default function FeaturesPage() {
-  useEffect(() => {
-    document.documentElement.classList.add("dark");
-    document.body.style.background = "#040706";
-    document.body.style.margin = "0";
-    return () => {
-      document.documentElement.classList.remove("dark");
-      document.body.style.background = "";
-      document.body.style.margin = "";
-    };
-  }, []);
-
   const year = new Date().getFullYear();
 
   return (
