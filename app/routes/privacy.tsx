@@ -41,7 +41,7 @@ export default function PrivacyPolicy() {
           <span className="dot" aria-hidden />
           Legal · Privacy
         </span>
-        <span>corepilotai.corewital.com</span>
+        <span>Data protection &amp; merchant privacy</span>
       </div>
 
       <header className="cp-site__header">
