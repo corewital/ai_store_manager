@@ -1,5 +1,6 @@
 import type { LinksFunction, MetaFunction } from "@remix-run/node";
 import { Link } from "@remix-run/react";
+import { useEffect } from "react";
 
 export const meta: MetaFunction = () => [
   { title: "Features & AI Assistant — CorePilot AI" },
@@ -12,36 +13,84 @@ export const meta: MetaFunction = () => [
 
 export const links: LinksFunction = () => [
   { rel: "stylesheet", href: "/landing/landing.css" },
+  { rel: "stylesheet", href: "/landing/site-pages.css" },
   {
     rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap",
+    href: "https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap",
+  },
+  {
+    rel: "stylesheet",
+    href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
   },
 ];
 
 export default function FeaturesPage() {
+  useEffect(() => {
+    document.documentElement.classList.add("dark");
+    document.body.style.background = "#040706";
+    document.body.style.margin = "0";
+    return () => {
+      document.documentElement.classList.remove("dark");
+      document.body.style.background = "";
+      document.body.style.margin = "";
+    };
+  }, []);
+
+  const year = new Date().getFullYear();
+
   return (
-    <div className="features-doc">
-      <header className="features-doc__nav">
-        <Link to="/">
-          <img
-            src="/images/Main_Brand_Logo_Horizontal.png"
-            alt="CorePilot AI"
-            height={36}
-          />
-        </Link>
-        <nav>
-          <Link to="/">Home</Link>
-          <Link to="/privacy">Privacy</Link>
-        </nav>
+    <div className="cp-site">
+      <div className="cp-site__topbar">
+        <span className="live">
+          <span className="dot" aria-hidden />
+          Shopify Embedded App
+        </span>
+        <span className="hidden-sm">Features · Plans · AI Assistant</span>
+      </div>
+
+      <header className="cp-site__header">
+        <div className="cp-site__header-inner">
+          <Link to="/" className="cp-site__brand" aria-label="CorePilot AI Home">
+            <span className="cp-site__brand-mark">
+              <img src="/images/Monogram.png" alt="" />
+            </span>
+            <span className="cp-site__brand-text">
+              <span className="cp-site__brand-title">
+                CorePilot
+                <span className="cp-site__brand-badge">AI</span>
+              </span>
+              <span className="cp-site__brand-sub">Shopify Catalog Intelligence</span>
+            </span>
+          </Link>
+          <nav className="cp-site__nav" aria-label="Main">
+            <Link to="/">Home</Link>
+            <Link to="/features" className="is-active">
+              Features
+            </Link>
+            <Link to="/#pricing">Pricing</Link>
+            <Link to="/privacy">Privacy</Link>
+          </nav>
+          <Link to="/#hero-audit" className="cp-site__cta">
+            Install Free App
+          </Link>
+        </div>
       </header>
 
-      <main className="features-doc__main">
-        <h1>CorePilot AI — Features &amp; AI Assistant</h1>
-        <p className="lead">
-          Merchant guide: what the app does, which plans include the AI Assistant,
-          and how to try before you buy.
-        </p>
+      <section className="cp-site__hero">
+        <div className="cp-site__hero-inner">
+          <span className="cp-site__eyebrow">Merchant guide</span>
+          <h1>
+            Features &amp;{" "}
+            <span style={{ color: "#34d399" }}>AI Assistant</span>
+          </h1>
+          <p className="lead">
+            What CorePilot AI does, which plans include the store-aware AI Assistant,
+            and how to try before you buy.
+          </p>
+        </div>
+      </section>
 
+      <main className="cp-site__main">
         <section>
           <h2>What CorePilot AI does</h2>
           <p>
@@ -67,19 +116,25 @@ export default function FeaturesPage() {
             your store&apos;s scan context: health score, open issues, catalog signals,
             and plan limits.
           </p>
-          <h3>Example questions</h3>
-          <ul>
-            <li>What are my biggest store issues right now?</li>
-            <li>Which products need better descriptions or SEO?</li>
-            <li>How can I improve my health score this week?</li>
-            <li>What should I fix first before a sale?</li>
-          </ul>
-          <h3>What it does not do</h3>
-          <ul>
-            <li>Does not edit theme Liquid or checkout</li>
-            <li>Does not replace one-click fix modules (Products / SEO / Images / Fixes)</li>
-            <li>Does not invent catalog data — answers use scan and Shopify context</li>
-          </ul>
+          <div className="cp-grid-2">
+            <div className="cp-card">
+              <h3>Example questions</h3>
+              <ul>
+                <li>What are my biggest store issues right now?</li>
+                <li>Which products need better SEO?</li>
+                <li>How can I improve my health score?</li>
+                <li>What should I fix first before a sale?</li>
+              </ul>
+            </div>
+            <div className="cp-card">
+              <h3>What it does not do</h3>
+              <ul>
+                <li>Does not edit theme Liquid or checkout</li>
+                <li>Does not replace one-click fix modules</li>
+                <li>Does not invent catalog data</li>
+              </ul>
+            </div>
+          </div>
           <table>
             <thead>
               <tr>
@@ -105,7 +160,7 @@ export default function FeaturesPage() {
         </section>
 
         <section>
-          <h2>All features (by area)</h2>
+          <h2>All features</h2>
           <ul>
             <li>Health Score dashboard</li>
             <li>Product, SEO, image, collection scans &amp; AI fixes</li>
@@ -166,105 +221,62 @@ export default function FeaturesPage() {
             Install on a development store to test paid plans at $0. On live stores,
             billing runs through Shopify Settings → Bills.
           </p>
-          <p>
-            <Link to="/#hero-audit" className="features-doc__cta">
-              Install CorePilot AI
-            </Link>
-          </p>
+          <Link to="/#hero-audit" className="cp-btn-primary">
+            Install CorePilot AI
+          </Link>
         </section>
       </main>
 
-      <footer className="features-doc__footer">
-        <span>© {new Date().getFullYear()} CorePilot AI · CoreWital</span>
-        <Link to="/privacy">Privacy</Link>
+      <footer className="cp-site__footer">
+        <div className="cp-site__footer-inner">
+          <div>
+            <Link to="/" className="cp-site__brand">
+              <span className="cp-site__brand-mark">
+                <img src="/images/Monogram.png" alt="" />
+              </span>
+              <span className="cp-site__brand-title">
+                CorePilot
+                <span className="cp-site__brand-badge">AI</span>
+              </span>
+            </Link>
+            <p>
+              Shopify embedded app for store health scans, AI fixes, and live-context
+              merchant guidance.
+            </p>
+          </div>
+          <div>
+            <h4>Navigation</h4>
+            <ul>
+              <li>
+                <Link to="/">Home</Link>
+              </li>
+              <li>
+                <Link to="/features">Features</Link>
+              </li>
+              <li>
+                <Link to="/#pricing">Pricing</Link>
+              </li>
+              <li>
+                <Link to="/privacy">Privacy</Link>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h4>Support</h4>
+            <ul>
+              <li>
+                <a href="mailto:corewital@gmail.com">corewital@gmail.com</a>
+              </li>
+              <li>In-app Support menu</li>
+              <li>Billed via Shopify</li>
+            </ul>
+          </div>
+        </div>
+        <div className="cp-site__footer-bottom">
+          <span>© {year} CorePilot AI · CoreWital</span>
+          <span style={{ color: "#34d399" }}>All systems healthy</span>
+        </div>
       </footer>
-
-      <style>{`
-        .features-doc {
-          font-family: "Hanken Grotesk", system-ui, sans-serif;
-          background: #040706;
-          color: #f8fafc;
-          min-height: 100vh;
-        }
-        .features-doc__nav {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 1rem 1.5rem;
-          border-bottom: 1px solid rgba(16, 185, 129, 0.15);
-        }
-        .features-doc__nav nav {
-          display: flex;
-          gap: 1.25rem;
-        }
-        .features-doc__nav a {
-          color: #94a3b8;
-          text-decoration: none;
-          font-size: 0.875rem;
-        }
-        .features-doc__nav a:hover {
-          color: #34d399;
-        }
-        .features-doc__main {
-          max-width: 42rem;
-          margin: 0 auto;
-          padding: 2.5rem 1.5rem 4rem;
-          line-height: 1.6;
-        }
-        .features-doc h1 {
-          font-family: Outfit, sans-serif;
-          font-size: 1.75rem;
-          margin-bottom: 0.75rem;
-        }
-        .features-doc h2 {
-          font-family: Outfit, sans-serif;
-          font-size: 1.25rem;
-          margin-top: 2rem;
-          color: #34d399;
-        }
-        .features-doc h3 {
-          font-size: 1rem;
-          margin-top: 1rem;
-        }
-        .features-doc .lead {
-          color: #94a3b8;
-        }
-        .features-doc table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 0.875rem;
-          margin: 1rem 0;
-        }
-        .features-doc th,
-        .features-doc td {
-          border: 1px solid rgba(16, 185, 129, 0.2);
-          padding: 0.5rem 0.75rem;
-          text-align: left;
-        }
-        .features-doc th {
-          background: #0d1411;
-        }
-        .features-doc__cta {
-          display: inline-block;
-          margin-top: 0.5rem;
-          padding: 0.75rem 1.25rem;
-          background: linear-gradient(90deg, #10b981, #34d399);
-          color: #040706 !important;
-          font-weight: 700;
-          border-radius: 0.75rem;
-        }
-        .features-doc__footer {
-          display: flex;
-          justify-content: space-between;
-          padding: 1.5rem;
-          border-top: 1px solid rgba(16, 185, 129, 0.15);
-          font-size: 0.75rem;
-          color: #94a3b8;
-        }
-        .features-doc__footer a {
-          color: #34d399;
-        }
-      `}</style>
     </div>
   );
 }
